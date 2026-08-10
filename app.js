@@ -1,5 +1,5 @@
 // ============================================
-// AliceMusic — app.js
+// AliceMusic — app.js (Ottimizzato per Android & Background)
 // ============================================
 
 const els = {
@@ -363,7 +363,7 @@ function playFromList(list, i){
   saveToHistory(tr);
   if (!els.historyView.hidden) renderHistory();
 
-  // Integrazione Media Session API per background e lockscreen
+  // Media Session API per lockscreen e notifiche Android[cite: 6]
   if ('mediaSession' in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title: tr.title,
@@ -442,6 +442,17 @@ els.progressBar.addEventListener('click', (e) => {
   const pct = (e.clientX - rect.left) / rect.width;
   const dur = ytPlayer.getDuration();
   ytPlayer.seekTo(dur * pct, true);
+});
+
+// ---------- TRUCCO ANDROID: MANTIENI ATTIVO IN BACKGROUND ----------
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    setTimeout(() => {
+      if (ytPlayer && typeof ytPlayer.playVideo === 'function') {
+        ytPlayer.playVideo();
+      }
+    }, 600);
+  }
 });
 
 showEmptyState();
