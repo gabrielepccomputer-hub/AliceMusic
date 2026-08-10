@@ -2,21 +2,22 @@
 <html lang="it">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>AliceMusic ✨</title>
 
+  <!-- Fogli di stile e configurazione -->
   <link rel="stylesheet" href="style.css">
   <script src="config.js" defer></script>
 </head>
 <body>
 
-  <!-- Polverina magica di sfondo -->
+  <!-- Effetto particellare (Pulviscolo dorato) -->
   <div class="dust" id="dust"></div>
 
-  <!-- Contenitore Principale -->
+  <!-- Contenitore Principale dell'App -->
   <div class="app">
 
-    <!-- Header con Titolo e Tab -->
+    <!-- Header con Titolo e Navigazione Tab -->
     <header class="app-header">
       <div class="brand">
         <span class="brand-icon">✨</span>
@@ -24,20 +25,21 @@
       </div>
       <p class="subtitle">Il tuo grimorio musicale incantato</p>
 
-      <!-- Navigazione Tab -->
       <div class="tabs">
         <button id="tabSearchBtn" class="tab-btn active">🔍 Ricerca</button>
         <button id="tabHistoryBtn" class="tab-btn">📜 Cronologia</button>
       </div>
     </header>
 
-    <!-- VISTA RICERCA -->
+    <!-- 1. VISTA RICERCA -->
     <div id="searchView" class="view">
+      
+      <!-- Barra di Ricerca -->
       <div class="search-box">
         <form id="searchForm" autocomplete="off">
           <div class="input-wrap">
-            <input type="text" id="searchInput" placeholder="Cerca una canzone, un artista..." />
-            <button type="button" id="clearBtn" class="clear-btn" aria-label="Cancella">×</button>
+            <input type="text" id="searchInput" placeholder="Cerca una canzone, un artista o un album..." />
+            <button type="button" id="clearBtn" class="clear-btn" aria-label="Cancella ricerca">×</button>
           </div>
         </form>
       </div>
@@ -51,55 +53,69 @@
         <button class="tag" data-q="Nightcore">⚡ Nightcore</button>
       </div>
 
-      <!-- Stato iniziale / Risultati -->
+      <!-- Contenitori per i risultati e per lo stato (vuoto/errore) -->
       <div id="state" class="state-box"></div>
       <div id="results" class="results-list"></div>
+
     </div>
 
-    <!-- VISTA CRONOLOGIA -->
+    <!-- 2. VISTA CRONOLOGIA -->
     <div id="historyView" class="view" hidden>
+      
       <div class="history-header">
-        <h2>Cronologia Ascolti</h2>
-        <button id="clearHistBtn" class="secondary-btn" hidden>Svuota</button>
+        <h2>I tuoi ascolti</h2>
+        <button id="clearHistBtn" class="secondary-btn" hidden>Svuota Tutto</button>
       </div>
+
+      <!-- Contenitori per la cronologia -->
       <div id="historyState" class="state-box"></div>
       <div id="historyResults" class="results-list"></div>
+
     </div>
 
-  </div>
+  </div> <!-- Fine .app -->
 
-  <!-- PLAYER FISSO IN BASSO -->
+  <!-- 3. PLAYER MUSICALE (Fisso in basso) -->
   <div id="player" class="player-panel">
+    
+    <!-- Barra di avanzamento in alto sul player -->
+    <div id="progressBar" class="progress-bar">
+      <div id="progressFill" class="progress-fill"></div>
+    </div>
+
     <div class="player-inner">
+      <!-- Vinile animato -->
       <div id="vinyl" class="vinyl">
         <img src="" alt="Album Art">
         <div class="vinyl-center"></div>
       </div>
+      
+      <!-- Informazioni traccia -->
       <div class="player-meta">
         <div id="playerTitle" class="p-title">Titolo Canzone</div>
         <div id="playerArtist" class="p-artist">Artista</div>
       </div>
+      
+      <!-- Controlli di riproduzione -->
       <div class="player-controls">
         <button id="prevBtn" class="ctrl-btn" aria-label="Precedente">⏮</button>
         <button id="playBtn" class="ctrl-btn play-main" aria-label="Riproduci/Pausa">▶</button>
         <button id="nextBtn" class="ctrl-btn" aria-label="Successivo">⏭</button>
       </div>
     </div>
-    <!-- Barra di avanzamento -->
-    <div id="progressBar" class="progress-bar">
-      <div id="progressFill" class="progress-fill"></div>
-    </div>
+
   </div>
 
-  <!-- Contenitore Nascosto per YouTube IFrame API -->
-  <div id="yt-player-host" style="display:none;"></div>
+  <!-- Contenitore Nascosto per YouTube IFrame API (Necessario per l'audio) -->
+  <div id="yt-player-host" style="display:none; pointer-events:none;"></div>
 
-  <!-- Toast notifiche -->
+  <!-- Toast notifiche (Messaggi a comparsa) -->
   <div id="toast" class="toast"></div>
 
-  <!-- Script YouTube Ufficiale -->
+  <!-- Script YouTube Ufficiale per il player -->
   <script src="https://www.youtube.com/iframe_api"></script>
-  <!-- Script principale della logica -->
+  <!-- Script principale della logica (da caricare alla fine) -->
   <script src="app.js" defer></script>
+
 </body>
 </html>
