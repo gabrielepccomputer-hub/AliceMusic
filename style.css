@@ -360,7 +360,7 @@ button, input{ font-family:inherit; }
 .toast.show{ opacity:1; transform: translateX(-50%) translateY(0); }
 
 /* player ospitante iframe nascosto */
-#yt-player-host{ position:fixed; width:1px; height:1px; opacity:0; pointer-events:none; bottom:0; left:0; }
+#yt-player-host{ position:fixed; width:160px; height:90px; top:-1000px; left:-1000px; pointer-events:none; }
 
 /* ---------- responsive piccoli schermi ---------- */
 @media (max-width:340px){

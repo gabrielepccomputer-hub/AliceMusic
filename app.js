@@ -164,18 +164,36 @@ els.clearHistBtn.addEventListener('click', () => {
 
 // ---------- YouTube IFrame API ----------
 window.onYouTubeIframeAPIReady = function(){
-  ytPlayer = new YT.Player('yt-player-host', {
-    height: '1', width: '1',
-    playerVars: {
-      playsinline: 1, controls: 0, disablekb: 1, rel: 0
-    },
-    events: {
-      onReady: () => { ytReady = true; },
-      onStateChange: onPlayerStateChange,
-      onError: onPlayerError,
-    }
-  });
+  console.log('[AliceMusic] YouTube IFrame API caricata, creo il player…');
+  try{
+    ytPlayer = new YT.Player('yt-player-host', {
+      height: '90', width: '160',
+      playerVars: {
+        playsinline: 1, controls: 0, disablekb: 1, rel: 0
+      },
+      events: {
+        onReady: () => { ytReady = true; console.log('[AliceMusic] Player pronto.'); },
+        onStateChange: onPlayerStateChange,
+        onError: onPlayerError,
+      }
+    });
+  } catch(e){
+    console.error('[AliceMusic] Errore creando il player YouTube:', e);
+  }
 };
+
+// se dopo alcuni secondi l'API di YouTube non è ancora arrivata
+// (rete lenta/bloccata), avvisa invece di restare in loop silenzioso
+setTimeout(() => {
+  if (!ytReady){
+    if (typeof YT === 'undefined'){
+      showToast('YouTube non risponde: controlla la connessione e ricarica la pagina', 4500);
+      console.warn('[AliceMusic] window.YT non definito dopo 8s: lo script iframe_api non si è caricato.');
+    } else {
+      showToast('Il player si sta caricando lentamente, attendi…', 3000);
+    }
+  }
+}, 8000);
 
 function onPlayerStateChange(e){
   if (e.data === YT.PlayerState.PLAYING){
