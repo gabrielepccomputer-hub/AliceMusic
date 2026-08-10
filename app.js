@@ -1,5 +1,5 @@
 // ============================================
-// AliceMusic — app.js (Versione API Pro + Cache Intelligente)
+// AliceMusic — Versione Stile SimpMusic (API Libere / Piped)
 // ============================================
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -31,11 +31,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   const HISTORY_KEY = 'aliceMusic_cronologia';
-  const CACHE_KEY = 'aliceMusic_search_cache';
   const HISTORY_MAX = 60;
-  
-  // LA TUA CHIAVE API UFFICIALE
-  const MY_API_KEY = "AIzaSyCk9mko_M8eELEk8DDyQmT8IviyrQuclyI";
 
   const MAGIC_CIRCLE_SVG = `
   <svg class="magic-circle" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -71,22 +67,6 @@ document.addEventListener("DOMContentLoaded", () => {
     els.toast.classList.add('show');
     clearTimeout(showToast._t);
     showToast._t = setTimeout(() => els.toast.classList.remove('show'), ms);
-  }
-
-  // ---------- CACHE LOCALE (RISPARMIO QUOTA API) ----------
-  function getCache(query){
-    try {
-      const cache = JSON.parse(localStorage.getItem(CACHE_KEY)) || {};
-      return cache[query.toLowerCase().trim()] || null;
-    } catch(e){ return null; }
-  }
-
-  function setCache(query, results){
-    try {
-      const cache = JSON.parse(localStorage.getItem(CACHE_KEY)) || {};
-      cache[query.toLowerCase().trim()] = results;
-      localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
-    } catch(e){}
   }
 
   // ---------- CRONOLOGIA ----------
@@ -173,68 +153,52 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast('Cronologia svuotata 📜');
   });
 
-  // ---------- YOUTUBE API PRO CON PROXY E CACHE ----------
-  async function searchYouTubePro(query) {
+  // ---------- RICERCA LIBERA STILE SIMPMUSIC (PIPED API) ----------
+  async function searchSimpMusic(query) {
     currentQuery = query;
     showLoading();
 
-    // 1. Controlla se la ricerca è già in cache (CONSUMO API = 0)
-    const cachedResults = getCache(query);
-    if (cachedResults) {
-      console.log("[PRO CACHE] Risultati caricati dalla memoria locale (0 chiamate API sprecate).");
-      currentList = cachedResults;
-      renderResults();
+    // Usiamo istanze pubbliche di Piped per cercare sul database di YouTube in chiaro senza chiavi
+    const instances = [
+      "https://pipedapi.kavin.rocks",
+      "https://piped-api.privacy.com.de",
+      "https://api.piped.privacy.coffee"
+    ];
+
+    let data = null;
+    for (const inst of instances) {
+      try {
+        const res = await fetch(`${inst}/search?q=${encodeURIComponent(query)}&filter=videos`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json && json.items && json.items.length > 0) {
+            data = json.items;
+            break;
+          }
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+
+    if (!data || data.length === 0) {
+      showToast("Nessun brano trovato");
+      showEmptyState();
       return;
     }
 
-    // 2. Chiamata reale all'API di YouTube protetta da CORS proxy
-    const targetUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&maxResults=15&q=${encodeURIComponent(query)}&key=${MY_API_KEY}`;
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+    currentList = data.map(item => {
+      // Estrae l'ID video pulito dall'URL di Piped (es. /watch?v=XXXXX)
+      const videoId = item.url ? item.url.split('v=')[1] : item.videoId;
+      return {
+        id: videoId || item.videoId,
+        title: item.title,
+        artist: item.uploaderName || "YouTube",
+        thumb: item.thumbnail || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`
+      };
+    }).filter(tr => tr.id);
 
-    try {
-      const response = await fetch(proxyUrl);
-      const data = await response.json();
-      
-      if (!data.contents) throw new Error("Risposta vuota dal proxy");
-      const parsedData = JSON.parse(data.contents);
-
-      if (parsedData.error) {
-        console.error("Errore Google API:", parsedData.error.message);
-        showToast("Limite API raggiunto o chiave errata. Attivo backup locale.");
-        loadFallback(query);
-        return;
-      }
-
-      const fetchedTracks = parsedData.items.map(item => ({
-        id: item.id.videoId,
-        title: item.snippet.title,
-        artist: item.snippet.channelTitle,
-        thumb: item.snippet.thumbnails.medium.url,
-      }));
-
-      // Salva in cache per non consumare chiamate future per la stessa ricerca
-      setCache(query, fetchedTracks);
-
-      currentList = fetchedTracks;
-      renderResults();
-
-    } catch (err) {
-      console.error("Errore di rete:", err);
-      loadFallback(query);
-    }
-  }
-
-  // Backup di sicurezza se l'API si blocca o esaurisce le quote
-  function loadFallback(query) {
-    const fallbackTracks = [
-      { id: "jfKfPfyJRdk", title: `${query} - Lofi Hip Hop Beats`, artist: "Lofi Girl", thumb: "https://i.ytimg.com/vi/jfKfPfyJRdk/mqdefault.jpg" },
-      { id: "5qap5aO4i9A", title: `${query} - Coffee Shop Ambient`, artist: "Lofi Girl", thumb: "https://i.ytimg.com/vi/5qap5aO4i9A/mqdefault.jpg" },
-      { id: "9bZkp7q19f0", title: `${query} - Hit Mix Official`, artist: "Music Channel", thumb: "https://i.ytimg.com/vi/9bZkp7q19f0/mqdefault.jpg" },
-      { id: "kJQP7kiw5Fk", title: `${query} - Special Version`, artist: "Global Hits", thumb: "https://i.ytimg.com/vi/kJQP7kiw5Fk/mqdefault.jpg" }
-    ];
-    currentList = fallbackTracks;
     renderResults();
-    showToast("Modalità risorsa protetta attiva 🎶");
   }
 
   function showEmptyState(){
@@ -291,12 +255,12 @@ document.addEventListener("DOMContentLoaded", () => {
     return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   }
 
-  // Eventi Input e Form senza ricaricamento
+  // Gestione Form e Input senza ricaricamento pagina
   if (els.searchForm) {
     els.searchForm.addEventListener('submit', (e) => {
       e.preventDefault();
       const q = els.input ? els.input.value.trim() : '';
-      if (q) searchYouTubePro(q);
+      if (q) searchSimpMusic(q);
       return false;
     });
   }
@@ -307,7 +271,7 @@ document.addEventListener("DOMContentLoaded", () => {
       clearTimeout(searchDebounce);
       const q = els.input.value.trim();
       if (!q){ showEmptyState(); return; }
-      searchDebounce = setTimeout(() => searchYouTubePro(q), 500);
+      searchDebounce = setTimeout(() => searchSimpMusic(q), 500);
     });
   }
 
@@ -326,7 +290,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!t) return;
       els.input.value = t.dataset.q;
       if (els.clear) els.clear.classList.add('show');
-      searchYouTubePro(t.dataset.q);
+      searchSimpMusic(t.dataset.q);
     });
   }
 
@@ -338,7 +302,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // ---------- YouTube IFrame API per la Musica ----------
+  // ---------- YouTube IFrame API ----------
   window.onYouTubeIframeAPIReady = function(){
     try {
       ytPlayer = new YT.Player('yt-player-host', {
