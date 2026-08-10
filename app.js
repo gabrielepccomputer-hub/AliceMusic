@@ -25,20 +25,6 @@ const els = {
   historyState: document.getElementById('historyState'),
   historyResults: document.getElementById('historyResults'),
   clearHistBtn: document.getElementById('clearHistBtn'),
-  openNowPlaying: document.getElementById('openNowPlaying'),
-  nowPlaying: document.getElementById('nowPlaying'),
-  npClose: document.getElementById('npClose'),
-  npArt: document.getElementById('npArt'),
-  npTitle: document.getElementById('npTitle'),
-  npArtist: document.getElementById('npArtist'),
-  npProgressBar: document.getElementById('npProgressBar'),
-  npProgressFill: document.getElementById('npProgressFill'),
-  npProgressThumb: document.getElementById('npProgressThumb'),
-  npTimeCur: document.getElementById('npTimeCur'),
-  npTimeDur: document.getElementById('npTimeDur'),
-  npPlayBtn: document.getElementById('npPlayBtn'),
-  npPrevBtn: document.getElementById('npPrevBtn'),
-  npNextBtn: document.getElementById('npNextBtn'),
 };
 
 const HISTORY_KEY = 'aliceMusic_cronologia';
@@ -79,7 +65,7 @@ function showToast(msg, ms = 2200){
   showToast._t = setTimeout(() => els.toast.classList.remove('show'), ms);
 }
 
-// ---------- cronologia (salvata nel dispositivo, sopravvive alla chiusura) ----------
+// ---------- cronologia ----------
 function getHistory(){
   try{
     return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
@@ -87,10 +73,10 @@ function getHistory(){
 }
 function saveToHistory(track){
   let hist = getHistory();
-  hist = hist.filter(h => h.id !== track.id); // niente doppioni, va in cima
+  hist = hist.filter(h => h.id !== track.id);
   hist.unshift({ ...track, playedAt: Date.now() });
   if (hist.length > HISTORY_MAX) hist = hist.slice(0, HISTORY_MAX);
-  try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(hist)); } catch(e){ /* storage pieno, pazienza */ }
+  try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(hist)); } catch(e){}
 }
 function clearHistory(){
   localStorage.removeItem(HISTORY_KEY);
@@ -160,7 +146,7 @@ els.clearHistBtn.addEventListener('click', () => {
   showToast('Cronologia svuotata 📜');
 });
 
-// ---------- polvere dorata di sfondo ----------
+// ---------- pulviscolo dorato ----------
 (function dust(){
   const wrap = document.getElementById('dust');
   const n = 22;
@@ -178,34 +164,22 @@ els.clearHistBtn.addEventListener('click', () => {
 
 // ---------- YouTube IFrame API ----------
 window.onYouTubeIframeAPIReady = function(){
-  console.log('[AliceMusic] YouTube IFrame API caricata, creo il player…');
   try{
     ytPlayer = new YT.Player('yt-player-host', {
       height: '90', width: '160',
-      playerVars: {
-        playsinline: 1, controls: 0, disablekb: 1, rel: 0
-      },
+      playerVars: { playsinline: 1, controls: 0, disablekb: 1, rel: 0 },
       events: {
-        onReady: () => { ytReady = true; console.log('[AliceMusic] Player pronto.'); },
+        onReady: () => { ytReady = true; },
         onStateChange: onPlayerStateChange,
         onError: onPlayerError,
       }
     });
-  } catch(e){
-    console.error('[AliceMusic] Errore creando il player YouTube:', e);
-  }
+  } catch(e){}
 };
 
-// se dopo alcuni secondi l'API di YouTube non è ancora arrivata
-// (rete lenta/bloccata), avvisa invece di restare in loop silenzioso
 setTimeout(() => {
-  if (!ytReady){
-    if (typeof YT === 'undefined'){
-      showToast('YouTube non risponde: controlla la connessione e ricarica la pagina', 4500);
-      console.warn('[AliceMusic] window.YT non definito dopo 8s: lo script iframe_api non si è caricato.');
-    } else {
-      showToast('Il player si sta caricando lentamente, attendi…', 3000);
-    }
+  if (!ytReady && typeof YT === 'undefined'){
+    showToast('YouTube non risponde: controlla la connessione e ricarica', 4500);
   }
 }, 8000);
 
@@ -220,31 +194,14 @@ function onPlayerStateChange(e){
     stopProgressLoop();
   } else if (e.data === YT.PlayerState.ENDED){
     playNext();
-  } else if (e.data === YT.PlayerState.BUFFERING){
-    // nulla, resta come prima
   }
 }
 
 function onPlayerError(e){
   const code = e && e.data;
-  const messages = {
-    2:   'Parametro video non valido',
-    5:   'Errore del player HTML5',
-    100: 'Video non trovato o rimosso',
-    101: 'Il proprietario non permette la riproduzione incorporata',
-    150: 'Il proprietario non permette la riproduzione incorporata',
-  };
-  const msg = messages[code] || `Errore sconosciuto (codice ${code})`;
-  console.warn('YouTube player error', code, e);
-
   if (code === 101 || code === 150 || code === 100){
-    // questo video specifico non è riproducibile in-iframe: salta al prossimo
-    showToast(msg + ', salto al prossimo 🐇');
+    showToast('Video non riproducibile, salto al prossimo 🐇');
     setTimeout(playNext, 700);
-  } else {
-    // errore probabilmente di configurazione (es. pagina aperta da file://
-    // invece che da un server): NON salta a raffica, avvisa e basta
-    showToast(msg + ' — apri l\'app da un server locale, non da file://');
   }
 }
 
@@ -315,11 +272,7 @@ async function search(query){
     if (data.error){
       els.results.innerHTML = '';
       els.state.style.display = 'flex';
-      els.state.innerHTML = `
-        ${MAGIC_CIRCLE_SVG}
-        <h3>L'incantesimo non riesce</h3>
-        <p>${data.error.message || 'Errore nella chiamata alle API di YouTube.'}</p>
-      `;
+      els.state.innerHTML = `${MAGIC_CIRCLE_SVG}<h3>Errore</h3><p>${data.error.message}</p>`;
       return;
     }
 
@@ -327,11 +280,7 @@ async function search(query){
     if (!items.length){
       els.results.innerHTML = '';
       els.state.style.display = 'flex';
-      els.state.innerHTML = `
-        ${MAGIC_CIRCLE_SVG}
-        <h3>Nessuna canzone trovata</h3>
-        <p>Prova con un altro titolo o un altro artista.</p>
-      `;
+      els.state.innerHTML = `${MAGIC_CIRCLE_SVG}<h3>Nessun risultato</h3><p>Prova con un'altra ricerca.</p>`;
       return;
     }
 
@@ -346,11 +295,7 @@ async function search(query){
   } catch(err){
     els.results.innerHTML = '';
     els.state.style.display = 'flex';
-    els.state.innerHTML = `
-      ${MAGIC_CIRCLE_SVG}
-      <h3>La magia si è interrotta</h3>
-      <p>Controlla la connessione e riprova.</p>
-    `;
+    els.state.innerHTML = `${MAGIC_CIRCLE_SVG}<h3>Errore di rete</h3><p>Controlla la connessione.</p>`;
   }
 }
 
@@ -391,7 +336,7 @@ els.results.addEventListener('click', (e) => {
   playTrack(i);
 });
 
-// ---------- riproduzione ----------
+// ---------- riproduzione e Media Session ----------
 function playTrack(i){
   playFromList(currentList, i);
 }
@@ -403,7 +348,7 @@ function playFromList(list, i){
   const tr = currentList[i];
 
   if (!ytReady || !ytPlayer){
-    showToast('Sto ancora caricando il lettore, un secondo…');
+    showToast('Caricamento lettore in corso...');
     setTimeout(() => playFromList(list, i), 600);
     return;
   }
@@ -417,20 +362,31 @@ function playFromList(list, i){
   markPlayingRow();
   saveToHistory(tr);
   if (!els.historyView.hidden) renderHistory();
-  updateMediaSession(tr);
-  if (!els.nowPlaying.hidden){
-    els.npArt.src = tr.thumb;
-    els.npTitle.textContent = tr.title;
-    els.npArtist.textContent = tr.artist;
+
+  // Integrazione Media Session API per background e lockscreen
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: tr.title,
+      artist: tr.artist,
+      album: 'AliceMusic ✨',
+      artwork: [
+        { src: tr.thumb, sizes: '96x96', type: 'image/jpeg' },
+        { src: tr.thumb, sizes: '128x128', type: 'image/jpeg' },
+        { src: tr.thumb, sizes: '192x192', type: 'image/jpeg' },
+        { src: tr.thumb, sizes: '512x512', type: 'image/jpeg' },
+      ]
+    });
+
+    navigator.mediaSession.setActionHandler('play', () => { ytPlayer.playVideo(); });
+    navigator.mediaSession.setActionHandler('pause', () => { ytPlayer.pauseVideo(); });
+    navigator.mediaSession.setActionHandler('previoustrack', playPrev);
+    navigator.mediaSession.setActionHandler('nexttrack', playNext);
   }
 
-  // il browser a volte blocca l'autoplay: se dopo un secondo non è partito,
-  // avvisa l'utente di toccare play a mano (quel tap è un gesto diretto,
-  // quindi il browser lo lascia sempre passare)
   clearTimeout(playFromList._autoplayCheck);
   playFromList._autoplayCheck = setTimeout(() => {
     if (currentIndex === i && !isPlaying){
-      showToast('Autoplay bloccato dal browser: tocca ▶️ per avviare', 3200);
+      showToast('Autoplay bloccato: tocca ▶️ per avviare', 3200);
     }
   }, 1100);
 }
@@ -443,25 +399,13 @@ function markPlayingRow(){
 
 function updatePlayUI(){
   els.vinyl.classList.toggle('spin', isPlaying);
-  const icon = isPlaying
+  els.playBtn.innerHTML = isPlaying
     ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
     : '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
-  els.playBtn.innerHTML = icon;
-  els.npPlayBtn.innerHTML = isPlaying
-    ? '<svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
-    : '<svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
   markPlayingRow();
-
-  if ('mediaSession' in navigator){
-    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
-  }
 }
 
 els.playBtn.addEventListener('click', () => {
-  if (!ytPlayer || currentIndex === -1) return;
-  if (isPlaying) ytPlayer.pauseVideo(); else ytPlayer.playVideo();
-});
-els.npPlayBtn.addEventListener('click', () => {
   if (!ytPlayer || currentIndex === -1) return;
   if (isPlaying) ytPlayer.pauseVideo(); else ytPlayer.playVideo();
 });
@@ -478,74 +422,6 @@ function playPrev(){
 }
 els.nextBtn.addEventListener('click', playNext);
 els.prevBtn.addEventListener('click', playPrev);
-els.npNextBtn.addEventListener('click', playNext);
-els.npPrevBtn.addEventListener('click', playPrev);
-
-// ---------- scheda "ora in riproduzione" a schermo intero ----------
-function openNowPlaying(){
-  if (currentIndex === -1) return;
-  const tr = currentList[currentIndex];
-  els.npArt.src = tr.thumb;
-  els.npTitle.textContent = tr.title;
-  els.npArtist.textContent = tr.artist;
-  els.nowPlaying.hidden = false;
-}
-function closeNowPlaying(){
-  els.nowPlaying.hidden = true;
-}
-els.openNowPlaying.addEventListener('click', openNowPlaying);
-els.vinyl.addEventListener('click', openNowPlaying);
-els.npClose.addEventListener('click', closeNowPlaying);
-
-// trascinamento sulla barra grande della scheda a schermo intero
-let npDragging = false;
-function npSeekFromEvent(e){
-  const rect = els.npProgressBar.getBoundingClientRect();
-  const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-  const pct = Math.min(1, Math.max(0, x / rect.width));
-  els.npProgressFill.style.width = (pct * 100) + '%';
-  els.npProgressThumb.style.left = (pct * 100) + '%';
-  return pct;
-}
-els.npProgressBar.addEventListener('pointerdown', (e) => {
-  npDragging = true;
-  npSeekFromEvent(e);
-  els.npProgressBar.setPointerCapture(e.pointerId);
-});
-els.npProgressBar.addEventListener('pointermove', (e) => {
-  if (npDragging) npSeekFromEvent(e);
-});
-els.npProgressBar.addEventListener('pointerup', (e) => {
-  if (!npDragging) return;
-  npDragging = false;
-  if (!ytPlayer || !ytPlayer.getDuration) return;
-  const pct = npSeekFromEvent(e);
-  ytPlayer.seekTo(ytPlayer.getDuration() * pct, true);
-});
-
-function formatTime(s){
-  if (!isFinite(s) || s < 0) s = 0;
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60).toString().padStart(2, '0');
-  return `${m}:${sec}`;
-}
-
-// ---------- Media Session: controlli su schermata di blocco / notifica ----------
-function updateMediaSession(tr){
-  if (!('mediaSession' in navigator)) return;
-  navigator.mediaSession.metadata = new MediaMetadata({
-    title: tr.title,
-    artist: tr.artist,
-    album: 'AliceMusic',
-    artwork: [
-      { src: tr.thumb, sizes: '320x180', type: 'image/jpeg' }
-    ]
-  });
-  navigator.mediaSession.setActionHandler('play', () => ytPlayer && ytPlayer.playVideo());
-  navigator.mediaSession.setActionHandler('pause', () => ytPlayer && ytPlayer.pauseVideo());
-  navigator.mediaSession.setActionHandler('previoustrack', playPrev);
-  navigator.mediaSession.setActionHandler('nexttrack', playNext);
-}
 
 // ---------- barra di avanzamento ----------
 function startProgressLoop(){
@@ -554,16 +430,7 @@ function startProgressLoop(){
     if (!ytPlayer || !ytPlayer.getDuration) return;
     const dur = ytPlayer.getDuration();
     const cur = ytPlayer.getCurrentTime();
-    if (dur > 0){
-      const pct = (cur / dur * 100);
-      els.progressFill.style.width = pct + '%';
-      if (!npDragging){
-        els.npProgressFill.style.width = pct + '%';
-        els.npProgressThumb.style.left = pct + '%';
-      }
-      els.npTimeCur.textContent = formatTime(cur);
-      els.npTimeDur.textContent = formatTime(dur);
-    }
+    if (dur > 0) els.progressFill.style.width = (cur / dur * 100) + '%';
   }, 400);
 }
 function stopProgressLoop(){
@@ -577,5 +444,4 @@ els.progressBar.addEventListener('click', (e) => {
   ytPlayer.seekTo(dur * pct, true);
 });
 
-// stato iniziale
 showEmptyState();
