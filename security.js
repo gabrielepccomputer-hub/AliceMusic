@@ -1,5 +1,1 @@
-// ============================================
-// AliceMusic — security.js
-// ============================================
-window.ALICE_SECURITY_TOKEN = "ALICE_SECURE_VERIFIED_998877";
-window.ALICE_ANTITAMPER_ACTIVE = true;
+var _0x5a3b=['ALICE_SECURE_VERIFIED_998877','ALICE_SECURITY_TOKEN','ALICE_ANTITAMPER_ACTIVE'];(function(_0x12a849,_0x18e874){var _0x42f2b3=function(_0x327ea3){while(--_0x327ea3){_0x12a849['push'](_0x12a849['shift']());}};_0x42f2b3(++_0x18e874);}(_0x5a3b,0x1b4));var _0x2707=function(_0x12a849,_0x18e874){_0x12a849=_0x12a849-0x0;var _0x42f2b3=_0x5a3b[_0x12a849];return _0x42f2b3;};window[_0x2707('0x1')]='ALICE_SECURE_VERIFIED_998877';window[_0x2707('0x2')]=!0;
