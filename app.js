@@ -1,5 +1,5 @@
 // ============================================
-// AliceMusic — app.js (Completo con Server Vercel)
+// AliceMusic — app.js (Completo con Server Vercel - Innertube reale)
 // ============================================
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -33,7 +33,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const HISTORY_KEY = 'aliceMusic_cronologia';
   const HISTORY_MAX = 60;
 
-  // URL del tuo server attivo su Vercel
+  // URL del server Vercel (Innertube reale, endpoint: /search?q=...)
   const SERVER_URL = 'https://server-music-alice-music.vercel.app';
 
   const MAGIC_CIRCLE_SVG = `
@@ -132,7 +132,7 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
       </div>
     `).join('');
-    
+
     els.historyResults.querySelectorAll('.hist-track').forEach(row => {
       row.addEventListener('click', () => {
         playFromList(getHistory(), parseInt(row.dataset.i, 10));
@@ -156,33 +156,140 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast('Cronologia svuotata 📜');
   });
 
-  // ---------- MOTORE DI RICERCA TRAMITE SERVER VERCEL ----------
+  // ---------- NORMALIZZAZIONE RISULTATI INNERTUBE (yt.music.search) ----------
+  // La risposta di youtubei.js per yt.music.search() è un oggetto a "shelves":
+  // { results: [ { type: 'MusicShelf'|'Shelf', contents: [ {id/title/artists/thumbnail...} ] }, ... ] }
+  // A seconda della versione della libreria le proprietà possono chiamarsi in modo
+  // leggermente diverso, quindi qui si prova a coprire i casi più comuni in modo robusto.
+
+  function pickThumb(item){
+    // Prova diversi percorsi possibili per la thumbnail
+    const candidates = [
+      item?.thumbnail?.contents,
+      item?.thumbnail?.thumbnails,
+      Array.isArray(item?.thumbnail) ? item.thumbnail : null,
+      item?.thumbnails,
+      item?.author?.thumbnails,
+    ].filter(Boolean);
+
+    for (const arr of candidates) {
+      if (Array.isArray(arr) && arr.length) {
+        const best = arr[arr.length - 1]; // di solito l'ultima è la più grande
+        if (best?.url) return best.url;
+      }
+    }
+
+    if (item?.id) return `https://i.ytimg.com/vi/${item.id}/mqdefault.jpg`;
+    return '';
+  }
+
+  function pickArtist(item){
+    if (Array.isArray(item?.artists) && item.artists.length) {
+      return item.artists.map(a => a?.name).filter(Boolean).join(', ');
+    }
+    if (item?.artist?.name) return item.artist.name;
+    if (typeof item?.artist === 'string') return item.artist;
+    if (item?.author?.name) return item.author.name;
+    if (typeof item?.author === 'string') return item.author;
+    return 'Sconosciuto';
+  }
+
+  function pickTitle(item){
+    if (typeof item?.title === 'string') return item.title;
+    if (item?.title?.text) return item.title.text;
+    return 'Senza titolo';
+  }
+
+  function pickId(item){
+    return item?.id || item?.video_id || item?.videoId || null;
+  }
+
+  function isPlayableItem(item){
+    // Scarta shelf/header o elementi senza id video (es. album, artisti, playlist)
+    const t = (item?.type || item?.item_type || '').toString().toLowerCase();
+    if (t.includes('artist') || t.includes('album') || t.includes('playlist') || t.includes('shelf') || t.includes('header')) {
+      // Se comunque ha un id "video-like" lo teniamo, altrimenti scartiamo
+      return !!pickId(item) && t.includes('song');
+    }
+    return !!pickId(item);
+  }
+
+  function normalizeYouTubeMusicResults(data){
+    if (!data) return [];
+
+    // Caso: il server restituisce già un array semplice [{id,title,artist,thumb}, ...]
+    if (Array.isArray(data)) {
+      if (data.length && data[0] && (data[0].id || data[0].videoId) && (data[0].title !== undefined)) {
+        return data.map(tr => ({
+          id: pickId(tr) || tr.id,
+          title: pickTitle(tr),
+          artist: tr.artist || pickArtist(tr),
+          thumb: tr.thumb || pickThumb(tr)
+        })).filter(tr => tr.id);
+      }
+    }
+
+    // Caso: struttura Innertube con "results" (shelves)
+    const shelves = data.results || data.contents || (Array.isArray(data) ? data : []);
+    const out = [];
+
+    const walk = (node) => {
+      if (!node) return;
+      if (Array.isArray(node)) {
+        node.forEach(walk);
+        return;
+      }
+      const contents = node.contents || node.items || null;
+      if (Array.isArray(contents)) {
+        contents.forEach(walk);
+      }
+      if (isPlayableItem(node) && pickId(node)) {
+        out.push({
+          id: pickId(node),
+          title: pickTitle(node),
+          artist: pickArtist(node),
+          thumb: pickThumb(node)
+        });
+      }
+    };
+
+    walk(shelves);
+
+    // Rimuove duplicati mantenendo l'ordine
+    const seen = new Set();
+    return out.filter(tr => {
+      if (!tr.id || seen.has(tr.id)) return false;
+      seen.add(tr.id);
+      return true;
+    });
+  }
+
+  // ---------- MOTORE DI RICERCA TRAMITE SERVER VERCEL (Innertube reale) ----------
   async function searchMusic(query) {
     currentQuery = query;
     showLoading();
 
     try {
-      const res = await fetch(`${SERVER_URL}/api/search?q=${encodeURIComponent(query)}`);
+      const res = await fetch(`${SERVER_URL}/search?q=${encodeURIComponent(query)}`);
       if (!res.ok) throw new Error('Errore di connessione al server');
-      
+
       const data = await res.json();
-      if (!data || data.length === 0) {
+      const tracks = normalizeYouTubeMusicResults(data);
+
+      if (query !== currentQuery) return; // una ricerca più recente ha già sostituito questa
+
+      if (!tracks.length) {
         showEmptyState();
         showToast("Nessun risultato trovato 🔍");
         return;
       }
 
-      currentList = data;
+      currentList = tracks;
       renderResults();
     } catch (e) {
       console.error(e);
-      // Fallback locale in caso di errore di rete temporaneo
-      currentList = [
-        { id: "jfKfPfyJRdk", title: `${query} - Lofi Hip Hop Beats`, artist: "Lofi Girl", thumb: "https://i.ytimg.com/vi/jfKfPfyJRdk/mqdefault.jpg" },
-        { id: "5qap5aO4i9A", title: `${query} - Coffee Shop Ambient`, artist: "Lofi Girl", thumb: "https://i.ytimg.com/vi/5qap5aO4i9A/mqdefault.jpg" }
-      ];
-      renderResults();
-      showToast("Server non raggiungibile, fallback attivo 🎶");
+      showEmptyState();
+      showToast("Il server non risponde, riprova tra poco 🐇");
     }
   }
 
@@ -237,7 +344,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function escapeHtml(str){
-    return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   }
 
   if (els.searchForm) {
