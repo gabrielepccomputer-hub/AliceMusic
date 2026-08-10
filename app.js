@@ -1,5 +1,5 @@
 // ============================================
-// AliceMusic — app.js (Con API Emulata & Infinite Scroll)
+// AliceMusic — app.js (Richieste REALI a Google API con Paginazione)
 // ============================================
 
 const els = {
@@ -58,11 +58,10 @@ let isPlaying = false;
 let progressTimer = null;
 let searchDebounce = null;
 
-// Variabili per la gestione dell'API emulata e infinite scroll
+// Variabili reali per interrogare Google
 let currentQuery = '';
-let pageToken = 1;
-let isLoadingMore = false;
-let useMockApi = false; // Metti a true se vuoi forzare l'uso dell'API emulata senza consumare chiavi YouTube
+let googleNextPageToken = '';
+let isFetchingMore = false;
 
 // ---------- toast ----------
 function showToast(msg, ms = 2200){
@@ -129,8 +128,7 @@ function renderHistory(){
   `).join('');
   els.historyResults.querySelectorAll('.hist-track').forEach(row => {
     row.addEventListener('click', () => {
-      const i = parseInt(row.dataset.i, 10);
-      playFromList(getHistory(), i);
+      playFromList(getHistory(), parseInt(row.dataset.i, 10));
     });
   });
 }
@@ -198,33 +196,13 @@ function onPlayerError(e){
   }
 }
 
-// ---------- MOCK API (EMULAZIONE RICHIESTE INFINITE) ----------
-async function fetchMockApiData(query, page) {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const mockTracks = [];
-      // Genera 6 risultati fittizi per ogni "richiesta infinita"
-      for (let i = 1; i <= 6; i++) {
-        const idNum = (page - 1) * 6 + i;
-        mockTracks.push({
-          id: `mock_vid_${idNum}`,
-          title: `${query} - Traccia Magica #${idNum}`,
-          artist: `Artista Grifondoro ${idNum}`,
-          thumb: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=150&auto=format&fit=crop&q=80'
-        });
-      }
-      resolve(mockTracks);
-    }, 700); // Simula latenza di rete
-  });
-}
-
-// ---------- RICERCA & SCROLL INFINITO ----------
+// ---------- GESTIONE INPUT E RICERCA ----------
 els.input.addEventListener('input', () => {
   els.clear.classList.toggle('show', els.input.value.length > 0);
   clearTimeout(searchDebounce);
   const q = els.input.value.trim();
   if (!q){ showEmptyState(); return; }
-  searchDebounce = setTimeout(() => executeSearch(q, true), 420);
+  searchDebounce = setTimeout(() => fetchRealGoogleSearch(q, true), 400);
 });
 
 els.clear.addEventListener('click', () => {
@@ -239,24 +217,25 @@ els.tags.addEventListener('click', (e) => {
   if (!t) return;
   els.input.value = t.dataset.q;
   els.clear.classList.add('show');
-  executeSearch(t.dataset.q, true);
+  fetchRealGoogleSearch(t.dataset.q, true);
 });
 
 document.getElementById('searchForm').addEventListener('submit', (e) => {
   e.preventDefault();
   clearTimeout(searchDebounce);
   const q = els.input.value.trim();
-  if (q) executeSearch(q, true);
+  if (q) fetchRealGoogleSearch(q, true);
 });
 
 function showEmptyState(){
   currentList = [];
+  googleNextPageToken = '';
   els.results.innerHTML = '';
   els.infiniteLoader.style.display = 'none';
   els.state.innerHTML = `
     ${MAGIC_CIRCLE_SVG}
     <h3>Pronuncia l'incantesimo</h3>
-    <p>Cerca una canzone o attiva le richieste infinite ✨🎶</p>
+    <p>Cerca una canzone, un artista o un album ✨🎶</p>
   `;
   els.state.style.display = 'flex';
 }
@@ -274,77 +253,91 @@ function showLoading(){
   `).join('');
 }
 
-async function executeSearch(query, reset = false){
-  if (reset) {
+// ---------- CHIAMATA REALE ALL'API DI GOOGLE CON PAGINAZIONE VERA ----------
+async function fetchRealGoogleSearch(query, isNewSearch = false){
+  if (isNewSearch) {
     currentQuery = query;
-    pageToken = 1;
+    googleNextPageToken = '';
     currentList = [];
     showLoading();
   } else {
-    if (isLoadingMore) return;
-    isLoadingMore = true;
+    if (isFetchingMore || !googleNextPageToken) return;
+    isFetchingMore = true;
     els.infiniteLoader.style.display = 'block';
   }
 
+  if (!window.ALICE_CONFIG || !ALICE_CONFIG.YOUTUBE_API_KEY) {
+    els.results.innerHTML = '';
+    els.state.style.display = 'flex';
+    els.state.innerHTML = `${MAGIC_CIRCLE_SVG}<h3>Chiave API Mancante</h3><p>Aggiungi la tua chiave nel file config.js</p>`;
+    isFetchingMore = false;
+    els.infiniteLoader.style.display = 'none';
+    return;
+  }
+
+  const apiKey = ALICE_CONFIG.YOUTUBE_API_KEY;
+  // Endpoint ufficiale documentato da Google per la ricerca video
+  let apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&videoEmbeddable=true&maxResults=15&q=${encodeURIComponent(currentQuery)}&key=${apiKey}`;
+
+  // Se non è una nuova ricerca e abbiamo un nextPageToken, lo passiamo a Google per ottenere i risultati successivi
+  if (!isNewSearch && googleNextPageToken) {
+    apiUrl += `&pageToken=${googleNextPageToken}`;
+  }
+
   try {
-    let items = [];
+    const response = await fetch(apiUrl);
+    const data = await response.json();
 
-    // Se la chiave non è configurata o è attiva la mod Mock, usa l'API emulata
-    if (useMockApi || !window.ALICE_CONFIG || !ALICE_CONFIG.YOUTUBE_API_KEY) {
-      items = await fetchMockApiData(currentQuery, pageToken);
-    } else {
-      const key = ALICE_CONFIG.YOUTUBE_API_KEY;
-      const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&videoEmbeddable=true&maxResults=10&q=${encodeURIComponent(currentQuery)}&key=${key}`;
-      const res = await fetch(url);
-      const data = await res.json();
-
-      if (data.error) {
-        // Se l'API reale fallisce (es. quota esaurita), passa automaticamente all'API emulata per continuità
-        useMockApi = true;
-        items = await fetchMockApiData(currentQuery, pageToken);
-      } else {
-        items = (data.items || []).filter(it => it.id && it.id.videoId).map(it => ({
-          id: it.id.videoId,
-          title: decodeHtml(it.snippet.title),
-          artist: decodeHtml(it.snippet.channelTitle),
-          thumb: it.snippet.thumbnails?.medium?.url || it.snippet.thumbnails?.default?.url,
-        }));
+    if (data.error) {
+      if (isNewSearch) {
+        els.results.innerHTML = '';
+        els.state.style.display = 'flex';
+        els.state.innerHTML = `${MAGIC_CIRCLE_SVG}<h3>Errore da Google API</h3><p>${escapeHtml(data.error.message)}</p>`;
       }
-    }
-
-    if (reset && !items.length) {
-      els.results.innerHTML = '';
-      els.state.style.display = 'flex';
-      els.state.innerHTML = `${MAGIC_CIRCLE_SVG}<h3>Nessun risultato</h3><p>Prova un'altra ricerca.</p>`;
       return;
     }
 
-    // Aggiunge i nuovi elementi alla lista corrente (richieste infinite)
-    currentList = reset ? items : currentList.concat(items);
-    pageToken++;
-    renderResults();
-  } catch (err) {
-    if (reset) {
+    const fetchedTracks = (data.items || []).filter(item => item.id && item.id.videoId).map(item => ({
+      id: item.id.videoId,
+      title: decodeHtml(item.snippet.title),
+      artist: decodeHtml(item.snippet.channelTitle),
+      thumb: item.snippet.thumbnails?.medium?.url || item.snippet.thumbnails?.default?.url,
+    }));
+
+    // Riceviamo ufficialmente il token per la pagina successiva dai server di Google
+    googleNextPageToken = data.nextPageToken || '';
+
+    if (isNewSearch && !fetchedTracks.length) {
       els.results.innerHTML = '';
       els.state.style.display = 'flex';
-      els.state.innerHTML = `${MAGIC_CIRCLE_SVG}<h3>Errore di rete</h3><p>Impossibile completare la richiesta.</p>`;
+      els.state.innerHTML = `${MAGIC_CIRCLE_SVG}<h3>Nessun risultato</h3><p>Nessun brano trovato per questa ricerca.</p>`;
+      return;
+    }
+
+    currentList = isNewSearch ? fetchedTracks : currentList.concat(fetchedTracks);
+    renderResults();
+  } catch (err) {
+    if (isNewSearch) {
+      els.results.innerHTML = '';
+      els.state.style.display = 'flex';
+      els.state.innerHTML = `${MAGIC_CIRCLE_SVG}<h3>Errore di rete</h3><p>Impossibile contattare i server di Google.</p>`;
     }
   } finally {
-    isLoadingMore = false;
+    isFetchingMore = false;
     els.infiniteLoader.style.display = 'none';
   }
 }
 
-function decodeHtml(str){
-  const t = document.createElement('textarea');
-  t.innerHTML = str;
-  return t.value;
+function decodeHtml(html){
+  const txt = document.createElement('textarea');
+  txt.innerHTML = html;
+  return txt.value;
 }
 
 function renderResults(){
   els.state.style.display = 'none';
   els.results.innerHTML = currentList.map((tr, i) => `
-    <div class="track" data-i="${i}" style="animation-delay:${(i % 10) * 30}ms">
+    <div class="track" data-i="${i}" style="animation-delay:${(i % 15) * 20}ms">
       <div class="thumb-wrap">
         <img src="${tr.thumb}" alt="" loading="lazy">
         <div class="eq"><i></i><i></i><i></i></div>
@@ -361,18 +354,18 @@ function renderResults(){
   markPlayingRow();
 }
 
-function escapeHtml(s){
-  return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+function escapeHtml(str){
+  return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
 
-// Event listener per lo scorrimento infinito (Infinite Scroll)
+// ---------- SCROLL INFINITO REALE AUTOMATICO CON GOOGLE API ----------
 window.addEventListener('scroll', () => {
-  if (els.searchView.hidden) return; // Se siamo nella cronologia, ignora
+  if (els.searchView.hidden) return;
   const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
-  // Quando l'utente arriva a 200px dalla fine della pagina, esegue una nuova richiesta infinita
-  if (scrollTop + clientHeight >= scrollHeight - 200) {
-    if (currentQuery && !isLoadingMore) {
-      executeSearch(currentQuery, false);
+  // Quando l'utente scorre fino a 250px dalla fine, interroga Google per la pagina successiva
+  if (scrollTop + clientHeight >= scrollHeight - 250) {
+    if (currentQuery && !isFetchingMore && googleNextPageToken) {
+      fetchRealGoogleSearch(currentQuery, false);
     }
   }
 });
@@ -383,7 +376,7 @@ els.results.addEventListener('click', (e) => {
   playTrack(parseInt(row.dataset.i, 10));
 });
 
-// ---------- riproduzione ----------
+// ---------- RIPRODUZIONE AUDIO ----------
 function playTrack(i){
   playFromList(currentList, i);
 }
@@ -395,13 +388,12 @@ function playFromList(list, i){
   const tr = currentList[i];
 
   if (!ytReady || !ytPlayer){
-    showToast('Caricamento lettore in corso...');
+    showToast('Inizializzazione lettore...');
     setTimeout(() => playFromList(list, i), 600);
     return;
   }
 
-  // Se il brano proviene dal mock, simula l'audio usando un video di riserva o riproducendo se compatibile
-  ytPlayer.loadVideoById(tr.id.startsWith('mock_') ? 'jfKfPfyJRdk' : tr.id);
+  ytPlayer.loadVideoById(tr.id);
   ytPlayer.playVideo();
   els.playerTitle.textContent = tr.title;
   els.playerArtist.textContent = tr.artist;
