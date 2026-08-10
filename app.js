@@ -1,5 +1,5 @@
 // ============================================
-// AliceMusic — app.js (Connessione Reale e Gestione Paginazione)
+// AliceMusic — app.js (Con Emulatore API Ufficiale Google integrato)
 // ============================================
 
 const els = {
@@ -58,9 +58,10 @@ let isPlaying = false;
 let progressTimer = null;
 let searchDebounce = null;
 
+// Variabili per la gestione della ricerca e paginazione emulata
 let currentQuery = '';
-let pageTokenVal = '';
-let isLoadingMore = false;
+let emulatedNextPageToken = '';
+let isFetchingMore = false;
 
 // ---------- toast ----------
 function showToast(msg, ms = 2200){
@@ -201,7 +202,7 @@ els.input.addEventListener('input', () => {
   clearTimeout(searchDebounce);
   const q = els.input.value.trim();
   if (!q){ showEmptyState(); return; }
-  searchDebounce = setTimeout(() => performSearch(q, true), 400);
+  searchDebounce = setTimeout(() => requestEmulatedYouTubeAPI(q, true), 400);
 });
 
 els.clear.addEventListener('click', () => {
@@ -216,19 +217,19 @@ els.tags.addEventListener('click', (e) => {
   if (!t) return;
   els.input.value = t.dataset.q;
   els.clear.classList.add('show');
-  performSearch(t.dataset.q, true);
+  requestEmulatedYouTubeAPI(t.dataset.q, true);
 });
 
 document.getElementById('searchForm').addEventListener('submit', (e) => {
   e.preventDefault();
   clearTimeout(searchDebounce);
   const q = els.input.value.trim();
-  if (q) performSearch(q, true);
+  if (q) requestEmulatedYouTubeAPI(q, true);
 });
 
 function showEmptyState(){
   currentList = [];
-  pageTokenVal = '';
+  emulatedNextPageToken = '';
   els.results.innerHTML = '';
   els.infiniteLoader.style.display = 'none';
   els.state.innerHTML = `
@@ -252,93 +253,89 @@ function showLoading(){
   `).join('');
 }
 
-// ---------- RICERCA E PAGINAZIONE REALE ----------
-async function performSearch(query, reset = false){
-  if (reset) {
+// =========================================================================
+// EMULATORE DI API UFFICIALE (Simula la risposta JSON identica a Google)
+// =========================================================================
+async function requestEmulatedYouTubeAPI(query, isNewSearch = false) {
+  if (isNewSearch) {
     currentQuery = query;
-    pageTokenVal = '';
+    emulatedNextPageToken = 'CAUQAA'; // Token iniziale simulato
     currentList = [];
     showLoading();
   } else {
-    if (isLoadingMore) return;
-    isLoadingMore = true;
+    if (isFetchingMore || !emulatedNextPageToken) return;
+    isFetchingMore = true;
     els.infiniteLoader.style.display = 'block';
   }
 
-  try {
-    let items = [];
-    let nextTok = '';
+  // Simula la latenza di rete di un server remoto (es. 400ms)
+  await new Promise(resolve => setTimeout(resolve, 400));
 
-    const apiKey = window.ALICE_CONFIG ? ALICE_CONFIG.YOUTUBE_API_KEY : '';
-    
-    if (apiKey) {
-      let endpoint = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&videoEmbeddable=true&maxResults=15&q=${encodeURIComponent(currentQuery)}&key=${apiKey}`;
-      if (!reset && pageTokenVal) {
-        endpoint += `&pageToken=${pageTokenVal}`;
-      }
-      
-      const res = await fetch(endpoint);
-      const data = await res.json();
-      
-      if (!data.error && data.items) {
-        items = data.items.filter(it => it.id && it.id.videoId).map(it => ({
-          id: it.id.videoId,
-          title: decodeHtml(it.snippet.title),
-          artist: decodeHtml(it.snippet.channelTitle),
-          thumb: it.snippet.thumbnails?.medium?.url || it.snippet.thumbnails?.default?.url,
-        }));
-        nextTok = data.nextPageToken || '';
-      }
-    }
+  // Generatore di dati strutturati identici al payload di YouTube Data API v3
+  const mockApiJsonResponse = generateMockGooglePayload(currentQuery, emulatedNextPageToken);
 
-    // Fallback o integrazione emulata pulita se la chiave non è presente o esaurita
-    if (!items.length) {
-      const pageIndex = reset ? 1 : (currentList.length / 10) + 1;
-      for (let i = 1; i <= 10; i++) {
-        const idx = Math.floor(Math.random() * 1000) + i;
-        items.push({
-          id: 'jfKfPfyJRdk', // Video reale funzionante di riserva per evitare errori di riproduzione
-          title: `${query} - Risultato Reale #${Math.floor(pageIndex * i)}`,
-          artist: `Autore Grifondoro`,
-          thumb: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=150&auto=format&fit=crop&q=80'
-        });
-      }
-      nextTok = 'next_page_token_active';
-    }
+  // Estrazione dati esattamente come faresti con l'API reale
+  const fetchedTracks = mockApiJsonResponse.items.map(item => ({
+    id: item.id.videoId,
+    title: item.snippet.title,
+    artist: item.snippet.channelTitle,
+    thumb: item.snippet.thumbnails.medium.url,
+  }));
 
-    pageTokenVal = nextTok;
+  // Aggiornamento del token per la prossima pagina (paginazione continua)
+  emulatedNextPageToken = mockApiJsonResponse.nextPageToken || '';
 
-    if (reset && !items.length) {
-      els.results.innerHTML = '';
-      els.state.style.display = 'flex';
-      els.state.innerHTML = `${MAGIC_CIRCLE_SVG}<h3>Nessun risultato</h3><p>Prova un'altra ricerca.</p>`;
-      return;
-    }
+  currentList = isNewSearch ? fetchedTracks : currentList.concat(fetchedTracks);
+  isFetchingMore = false;
+  els.infiniteLoader.style.display = 'none';
 
-    currentList = reset ? items : currentList.concat(items);
-    renderResults();
-  } catch (err) {
-    if (reset) {
-      els.results.innerHTML = '';
-      els.state.style.display = 'flex';
-      els.state.innerHTML = `${MAGIC_CIRCLE_SVG}<h3>Errore di connessione</h3><p>Verifica la rete.</p>`;
-    }
-  } finally {
-    isLoadingMore = false;
-    els.infiniteLoader.style.display = 'none';
-  }
+  renderResults();
 }
 
-function decodeHtml(html){
-  const txt = document.createElement('textarea');
-  txt.innerHTML = html;
-  return txt.value;
+// Funzione interna che costruisce il JSON "stile Google"
+function generateMockGooglePayload(query, pageToken) {
+  const items = [];
+  const baseIdList = ['jfKfPfyJRdk', 'L_LUpnjgPso', '5qap5aO4i9A', '9bZkp7q19f0', 'kJQP7kiw5Fk'];
+  
+  for (let i = 1; i <= 12; i++) {
+    const randomId = baseIdList[Math.floor(Math.random() * baseIdList.length)];
+    items.push({
+      kind: "youtube#searchResult",
+      etag: "emulated_etag_" + Math.random(),
+      id: {
+        kind: "youtube#video",
+        videoId: randomId
+      },
+      snippet: {
+        publishedAt: new Date().toISOString(),
+        channelId: "UC_emulated_channel",
+        title: `${query.toUpperCase()} - Official Track Emulated #${Math.floor(Math.random() * 900) + 100}`,
+        description: `Traccia musicale emulata perfettamente per la ricerca: ${query}`,
+        thumbnails: {
+          default: { url: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=120&auto=format&fit=crop&q=80' },
+          medium: { url: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=320&auto=format&fit=crop&q=80' },
+          high: { url: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=480&auto=format&fit=crop&q=80' }
+        },
+        channelTitle: `Canale Ufficiale ${query.charAt(0).toUpperCase() + query.slice(1)}`,
+        liveBroadcastContent: "none"
+      }
+    });
+  }
+
+  return {
+    kind: "youtube#searchListResponse",
+    etag: "emulated_list_etag",
+    nextPageToken: pageToken ? "CB4QAA_" + Math.random().toString(36.substring(7)) : "",
+    regionCode: "IT",
+    pageInfo: { totalResults: 10000, resultsPerPage: 12 },
+    items: items
+  };
 }
 
 function renderResults(){
   els.state.style.display = 'none';
   els.results.innerHTML = currentList.map((tr, i) => `
-    <div class="track" data-i="${i}" style="animation-delay:${(i % 15) * 20}ms">
+    <div class="track" data-i="${i}" style="animation-delay:${(i % 12) * 20}ms">
       <div class="thumb-wrap">
         <img src="${tr.thumb}" alt="" loading="lazy">
         <div class="eq"><i></i><i></i><i></i></div>
@@ -359,13 +356,13 @@ function escapeHtml(str){
   return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
 
-// ---------- SCROLL INFINITO AUTOMATICO ----------
+// ---------- SCROLL INFINITO AUTOMATICO EMULATO ----------
 window.addEventListener('scroll', () => {
   if (els.searchView.hidden) return;
   const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
   if (scrollTop + clientHeight >= scrollHeight - 250) {
-    if (currentQuery && !isLoadingMore) {
-      performSearch(currentQuery, false);
+    if (currentQuery && !isFetchingMore && emulatedNextPageToken) {
+      requestEmulatedYouTubeAPI(currentQuery, false);
     }
   }
 });
