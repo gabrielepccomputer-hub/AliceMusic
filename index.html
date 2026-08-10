@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#120b08">
-<!-- Ottimizzazioni PWA per Android -->
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -56,6 +55,8 @@
 
     <div class="state" id="state"></div>
     <div class="results" id="results"></div>
+    <!-- Indicatore per le richieste infinite in basso -->
+    <div id="infiniteLoader" style="display: none; text-align: center; padding: 20px; color: var(--gold-pale); font-size: 13px;">Caricamento magico di altri brani... ✨</div>
   </section>
 
   <section id="historyView" hidden>
@@ -93,34 +94,11 @@
 
 <div class="toast" id="toast"></div>
 
-<!-- TRUCCO BACKGROUND ANDROID: Audio silenzioso in loop per mantenere attivo il processo -->
-<audio id="bgKeeper" loop preload="auto" style="display:none;" src="data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA"></audio>
-
 <!-- player YouTube nascosto (audio) -->
 <div id="yt-player-host"></div>
 
 <script src="config.js"></script>
 <script src="https://www.youtube.com/iframe_api"></script>
 <script src="app.js"></script>
-<script>
-  // Registrazione Service Worker per PWA
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('service-worker.js').catch(() => {});
-    });
-  }
-
-  // LOGICA BACKGROUND ANDROID
-  // Avvia l'audio silenzioso al primo tocco sullo schermo per sbloccare i permessi di Android
-  document.addEventListener('pointerdown', function initAudio() {
-    const bgAudio = document.getElementById('bgKeeper');
-    if (bgAudio.paused) {
-      bgAudio.volume = 0.01; // Volume minimo per sicurezza
-      bgAudio.play().catch(() => {}); // Ignora eventuali errori se il browser blocca
-    }
-    // Rimuove l'evento dopo il primo avvio per non appesantire l'app
-    document.removeEventListener('pointerdown', initAudio);
-  }, { once: true });
-</script>
 </body>
 </html>
