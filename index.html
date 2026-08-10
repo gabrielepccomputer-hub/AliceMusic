@@ -5,26 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AliceMusic ✨</title>
 
-  <!-- SCRIPT DI SICUREZZA OBBLIGATORIO -->
-  <script src="security.js"></script>
-
-  <script>
-    // CONTROLLO ANTI-MANOMISSIONE E ANTI-HACK
-    (function() {
-      if (typeof window.ALICE_SECURITY_TOKEN === 'undefined' || window.ALICE_SECURITY_TOKEN !== "ALICE_SECURE_VERIFIED_998877") {
-        document.documentElement.innerHTML = `
-          <body style="background:#0a0002; color:#ff4d4d; height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; font-family:sans-serif; text-align:center; margin:0; padding:20px;">
-            <div style="border: 2px solid #ff4d4d; padding: 30px; border-radius: 12px; background: rgba(26,0,0,0.8); max-width: 400px; box-shadow: 0 0 20px rgba(255,0,0,0.3);">
-              <h2 style="margin-top:0; font-size: 24px;">🚫 NON HACKERARE IL SITO</h2>
-              <p style="color: #ffcccc; font-size: 14px; line-height: 1.5;">Componente di protezione rimosso o modificato. Accesso negato.</p>
-            </div>
-          </body>
-        `;
-        throw new Error("Security Violation: security.js is missing or invalid.");
-      }
-    })();
-  </script>
-
   <link rel="stylesheet" href="style.css">
   <script src="config.js" defer></script>
 </head>
