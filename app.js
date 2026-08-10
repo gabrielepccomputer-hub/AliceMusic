@@ -1,5 +1,5 @@
 // ============================================
-// AliceMusic — app.js (Con Emulatore API Ufficiale Google integrato)
+// AliceMusic — app.js (Con Debug Log Integrati)
 // ============================================
 
 const els = {
@@ -58,7 +58,6 @@ let isPlaying = false;
 let progressTimer = null;
 let searchDebounce = null;
 
-// Variabili per la gestione della ricerca e paginazione emulata
 let currentQuery = '';
 let emulatedNextPageToken = '';
 let isFetchingMore = false;
@@ -165,20 +164,24 @@ els.clearHistBtn.addEventListener('click', () => {
 
 // ---------- YouTube IFrame API ----------
 window.onYouTubeIframeAPIReady = function(){
+  console.log("[DEBUG] YouTube IFrame API pronta.");
   try{
     ytPlayer = new YT.Player('yt-player-host', {
       height: '90', width: '160',
       playerVars: { playsinline: 1, controls: 0, disablekb: 1, rel: 0 },
       events: {
-        onReady: () => { ytReady = true; },
+        onReady: () => { ytReady = true; console.log("[DEBUG] ytPlayer inizializzato con successo."); },
         onStateChange: onPlayerStateChange,
         onError: onPlayerError,
       }
     });
-  } catch(e){}
+  } catch(e){
+    console.error("[DEBUG ERROR] Errore init ytPlayer:", e);
+  }
 };
 
 function onPlayerStateChange(e){
+  console.log("[DEBUG] Player state changed:", e.data);
   if (e.data === YT.PlayerState.PLAYING){
     isPlaying = true; updatePlayUI(); startProgressLoop();
   } else if (e.data === YT.PlayerState.PAUSED){
@@ -189,6 +192,7 @@ function onPlayerStateChange(e){
 }
 
 function onPlayerError(e){
+  console.warn("[DEBUG WARNING] Errore riproduzione video player:", e && e.data);
   const code = e && e.data;
   if (code === 101 || code === 150 || code === 100){
     showToast('Brano non riproducibile, salto al prossimo 🐇');
@@ -201,11 +205,13 @@ els.input.addEventListener('input', () => {
   els.clear.classList.toggle('show', els.input.value.length > 0);
   clearTimeout(searchDebounce);
   const q = els.input.value.trim();
+  console.log("[DEBUG INPUT] Utente sta scrivendo:", q);
   if (!q){ showEmptyState(); return; }
   searchDebounce = setTimeout(() => requestEmulatedYouTubeAPI(q, true), 400);
 });
 
 els.clear.addEventListener('click', () => {
+  console.log("[DEBUG] Input pulito dall'utente.");
   els.input.value = '';
   els.clear.classList.remove('show');
   showEmptyState();
@@ -215,6 +221,7 @@ els.clear.addEventListener('click', () => {
 els.tags.addEventListener('click', (e) => {
   const t = e.target.closest('.tag');
   if (!t) return;
+  console.log("[DEBUG TAG] Tag cliccato:", t.dataset.q);
   els.input.value = t.dataset.q;
   els.clear.classList.add('show');
   requestEmulatedYouTubeAPI(t.dataset.q, true);
@@ -224,10 +231,12 @@ document.getElementById('searchForm').addEventListener('submit', (e) => {
   e.preventDefault();
   clearTimeout(searchDebounce);
   const q = els.input.value.trim();
+  console.log("[DEBUG SUBMIT] Invio form con query:", q);
   if (q) requestEmulatedYouTubeAPI(q, true);
 });
 
 function showEmptyState(){
+  console.log("[DEBUG] Mostro stato vuoto.");
   currentList = [];
   emulatedNextPageToken = '';
   els.results.innerHTML = '';
@@ -241,6 +250,7 @@ function showEmptyState(){
 }
 
 function showLoading(){
+  console.log("[DEBUG] Mostro schermata di caricamento / scheletrini.");
   els.state.style.display = 'none';
   els.results.innerHTML = Array.from({length: 6}).map(() => `
     <div class="skel">
@@ -254,36 +264,40 @@ function showLoading(){
 }
 
 // =========================================================================
-// EMULATORE DI API UFFICIALE (Simula la risposta JSON identica a Google)
+// EMULATORE DI API UFFICIALE CON DEBUG LOG
 // =========================================================================
 async function requestEmulatedYouTubeAPI(query, isNewSearch = false) {
+  console.log(`[EMULATOR DEBUG] Avvio richiesta. Query: "${query}", Nuova ricerca: ${isNewSearch}`);
+  
   if (isNewSearch) {
     currentQuery = query;
-    emulatedNextPageToken = 'CAUQAA'; // Token iniziale simulato
+    emulatedNextPageToken = 'CAUQAA';
     currentList = [];
     showLoading();
   } else {
-    if (isFetchingMore || !emulatedNextPageToken) return;
+    if (isFetchingMore || !emulatedNextPageToken) {
+      console.log("[EMULATOR DEBUG] Scorrimento saltato (già in corso o token esaurito).");
+      return;
+    }
     isFetchingMore = true;
     els.infiniteLoader.style.display = 'block';
   }
 
-  // Simula la latenza di rete di un server remoto (es. 400ms)
-  await new Promise(resolve => setTimeout(resolve, 400));
+  // Simula latenza server
+  await new Promise(resolve => setTimeout(resolve, 300));
 
-  // Generatore di dati strutturati identici al payload di YouTube Data API v3
-  const mockApiJsonResponse = generateMockGooglePayload(currentQuery, emulatedNextPageToken);
+  const mockResponse = generateMockGooglePayload(currentQuery, emulatedNextPageToken);
+  console.log("[EMULATOR DEBUG] Payload JSON ricevuto dal server simulato:", mockResponse);
 
-  // Estrazione dati esattamente come faresti con l'API reale
-  const fetchedTracks = mockApiJsonResponse.items.map(item => ({
+  const fetchedTracks = mockResponse.items.map(item => ({
     id: item.id.videoId,
     title: item.snippet.title,
     artist: item.snippet.channelTitle,
     thumb: item.snippet.thumbnails.medium.url,
   }));
 
-  // Aggiornamento del token per la prossima pagina (paginazione continua)
-  emulatedNextPageToken = mockApiJsonResponse.nextPageToken || '';
+  emulatedNextPageToken = mockResponse.nextPageToken || '';
+  console.log("[EMULATOR DEBUG] Tracce estratte:", fetchedTracks.length, "| Prossimo nextPageToken:", emulatedNextPageToken);
 
   currentList = isNewSearch ? fetchedTracks : currentList.concat(fetchedTracks);
   isFetchingMore = false;
@@ -292,7 +306,6 @@ async function requestEmulatedYouTubeAPI(query, isNewSearch = false) {
   renderResults();
 }
 
-// Funzione interna che costruisce il JSON "stile Google"
 function generateMockGooglePayload(query, pageToken) {
   const items = [];
   const baseIdList = ['jfKfPfyJRdk', 'L_LUpnjgPso', '5qap5aO4i9A', '9bZkp7q19f0', 'kJQP7kiw5Fk'];
@@ -301,38 +314,30 @@ function generateMockGooglePayload(query, pageToken) {
     const randomId = baseIdList[Math.floor(Math.random() * baseIdList.length)];
     items.push({
       kind: "youtube#searchResult",
-      etag: "emulated_etag_" + Math.random(),
       id: {
         kind: "youtube#video",
         videoId: randomId
       },
       snippet: {
         publishedAt: new Date().toISOString(),
-        channelId: "UC_emulated_channel",
-        title: `${query.toUpperCase()} - Official Track Emulated #${Math.floor(Math.random() * 900) + 100}`,
-        description: `Traccia musicale emulata perfettamente per la ricerca: ${query}`,
+        title: `${query.charAt(0).toUpperCase() + query.slice(1)} - Traccia Emulata ${i}`,
         thumbnails: {
-          default: { url: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=120&auto=format&fit=crop&q=80' },
-          medium: { url: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=320&auto=format&fit=crop&q=80' },
-          high: { url: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=480&auto=format&fit=crop&q=80' }
+          medium: { url: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=320&auto=format&fit=crop&q=80' }
         },
-        channelTitle: `Canale Ufficiale ${query.charAt(0).toUpperCase() + query.slice(1)}`,
-        liveBroadcastContent: "none"
+        channelTitle: `Canale Ufficiale ${query}`
       }
     });
   }
 
   return {
     kind: "youtube#searchListResponse",
-    etag: "emulated_list_etag",
-    nextPageToken: pageToken ? "CB4QAA_" + Math.random().toString(36.substring(7)) : "",
-    regionCode: "IT",
-    pageInfo: { totalResults: 10000, resultsPerPage: 12 },
+    nextPageToken: pageToken ? "CB4QAA_next" : "",
     items: items
   };
 }
 
 function renderResults(){
+  console.log("[DEBUG RENDER] Rendering di", currentList.length, "elementi a schermo.");
   els.state.style.display = 'none';
   els.results.innerHTML = currentList.map((tr, i) => `
     <div class="track" data-i="${i}" style="animation-delay:${(i % 12) * 20}ms">
@@ -361,6 +366,7 @@ window.addEventListener('scroll', () => {
   if (els.searchView.hidden) return;
   const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
   if (scrollTop + clientHeight >= scrollHeight - 250) {
+    console.log("[DEBUG SCROLL] Raggiunto fondo pagina, richiesta caricamento infinite scroll...");
     if (currentQuery && !isFetchingMore && emulatedNextPageToken) {
       requestEmulatedYouTubeAPI(currentQuery, false);
     }
@@ -370,7 +376,9 @@ window.addEventListener('scroll', () => {
 els.results.addEventListener('click', (e) => {
   const row = e.target.closest('.track');
   if (!row) return;
-  playTrack(parseInt(row.dataset.i, 10));
+  const idx = parseInt(row.dataset.i, 10);
+  console.log("[DEBUG CLICK] Cliccato brano in indice:", idx);
+  playTrack(idx);
 });
 
 // ---------- RIPRODUZIONE AUDIO ----------
@@ -383,9 +391,11 @@ function playFromList(list, i){
   currentList = list;
   currentIndex = i;
   const tr = currentList[i];
+  console.log("[DEBUG PLAYER] Avvio riproduzione brano:", tr);
 
   if (!ytReady || !ytPlayer){
     showToast('Inizializzazione lettore...');
+    console.warn("[DEBUG PLAYER] ytPlayer non ancora pronto, attendo...");
     setTimeout(() => playFromList(list, i), 600);
     return;
   }
@@ -416,15 +426,18 @@ function updatePlayUI(){
 }
 
 els.playBtn.addEventListener('click', () => {
+  console.log("[DEBUG UI] Click tasto Play/Pause principale.");
   if (!ytPlayer || currentIndex === -1) return;
   if (isPlaying) ytPlayer.pauseVideo(); else ytPlayer.playVideo();
 });
 
 function playNext(){
+  console.log("[DEBUG PLAYER] Passaggio al brano successivo.");
   if (!currentList.length) return;
   playTrack((currentIndex + 1) % currentList.length);
 }
 function playPrev(){
+  console.log("[DEBUG PLAYER] Passaggio al brano precedente.");
   if (!currentList.length) return;
   playTrack((currentIndex - 1 + currentList.length) % currentList.length);
 }
@@ -445,7 +458,9 @@ function stopProgressLoop(){ clearInterval(progressTimer); }
 els.progressBar.addEventListener('click', (e) => {
   if (!ytPlayer || !ytPlayer.getDuration) return;
   const rect = els.progressBar.getBoundingClientRect();
-  ytPlayer.seekTo(ytPlayer.getDuration() * ((e.clientX - rect.left) / rect.width), true);
+  const seekPercent = (e.clientX - rect.left) / rect.width;
+  console.log("[DEBUG PLAYER] Barra di avanzamento cliccata. Salto percentuale:", seekPercent);
+  ytPlayer.seekTo(ytPlayer.getDuration() * seekPercent, true);
 });
 
 showEmptyState();
