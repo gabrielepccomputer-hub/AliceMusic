@@ -34,7 +34,8 @@
   </div>
 
   <section id="searchView">
-    <form class="search-wrap" id="searchForm" autocomplete="off">
+    <!-- Aggiunto onsubmit="return false;" per bloccare qualsiasi ricaricamento nativo -->
+    <form class="search-wrap" id="searchForm" autocomplete="off" onsubmit="return false;">
       <div class="search-bottle">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
@@ -47,7 +48,7 @@
     <div class="tag-row" id="tagRow">
       <div class="tag" data-q="lofi study">Lofi</div>
       <div class="tag" data-q="hit del momento italiane">Hit italiane</div>
-      <div class="tag" data-q="pop internazionale 2026">Pop</div>
+      <div class="tag" data-q="pop internazionale">Pop</div>
       <div class="tag" data-q="rap italiano">Rap ITA</div>
       <div class="tag" data-q="musica rilassante">Relax</div>
       <div class="tag" data-q="anni 2000 hit">Anni 2000</div>
@@ -55,7 +56,6 @@
 
     <div class="state" id="state"></div>
     <div class="results" id="results"></div>
-    <!-- Indicatore per le richieste infinite in basso -->
     <div id="infiniteLoader" style="display: none; text-align: center; padding: 20px; color: var(--gold-pale); font-size: 13px;">Caricamento magico di altri brani... ✨</div>
   </section>
 
@@ -97,7 +97,7 @@
 <!-- player YouTube nascosto (audio) -->
 <div id="yt-player-host"></div>
 
-<script src="config.js"></script>
+<!-- NOTA: config.js è stato rimosso per evitare blocchi se non viene usato -->
 <script src="https://www.youtube.com/iframe_api"></script>
 <script src="app.js"></script>
 </body>
