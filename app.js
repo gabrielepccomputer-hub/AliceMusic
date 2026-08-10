@@ -1,5 +1,5 @@
 // ============================================
-// AliceMusic — app.js (Versione Completa e Definitiva)
+// AliceMusic — app.js (Completo con Server Vercel)
 // ============================================
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -32,6 +32,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const HISTORY_KEY = 'aliceMusic_cronologia';
   const HISTORY_MAX = 60;
+
+  // URL del tuo server attivo su Vercel
+  const SERVER_URL = 'https://server-music-alice-music.vercel.app';
 
   const MAGIC_CIRCLE_SVG = `
   <svg class="magic-circle" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -69,7 +72,7 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast._t = setTimeout(() => els.toast.classList.remove('show'), ms);
   }
 
-  // ---------- CRONOLOGIA ----------
+  // ---------- GESTIONE CRONOLOGIA ----------
   function getHistory(){
     try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; } catch(e){ return []; }
   }
@@ -153,55 +156,34 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast('Cronologia svuotata 📜');
   });
 
-  // ---------- MOTORE DI RICERCA MUSICALE ----------
+  // ---------- MOTORE DI RICERCA TRAMITE SERVER VERCEL ----------
   async function searchMusic(query) {
     currentQuery = query;
     showLoading();
 
-    const instances = [
-      "https://invidious.privacy.gd",
-      "https://vid.priv.au",
-      "https://inv.nadeko.net"
-    ];
-
-    let data = null;
-    for (const inst of instances) {
-      try {
-        const res = await fetch(`${inst}/api/v1/search?q=${encodeURIComponent(query)}&type=video`);
-        if (res.ok) {
-          const json = await res.json();
-          if (json && json.length > 0) {
-            data = json;
-            break;
-          }
-        }
-      } catch (e) {
-        continue;
+    try {
+      const res = await fetch(`${SERVER_URL}/api/search?q=${encodeURIComponent(query)}`);
+      if (!res.ok) throw new Error('Errore di connessione al server');
+      
+      const data = await res.json();
+      if (!data || data.length === 0) {
+        showEmptyState();
+        showToast("Nessun risultato trovato 🔍");
+        return;
       }
-    }
 
-    if (!data || data.length === 0) {
-      // Fallback sicuro con brani reali predefiniti se i nodi rispondono male
+      currentList = data;
+      renderResults();
+    } catch (e) {
+      console.error(e);
+      // Fallback locale in caso di errore di rete temporaneo
       currentList = [
         { id: "jfKfPfyJRdk", title: `${query} - Lofi Hip Hop Beats`, artist: "Lofi Girl", thumb: "https://i.ytimg.com/vi/jfKfPfyJRdk/mqdefault.jpg" },
-        { id: "5qap5aO4i9A", title: `${query} - Coffee Shop Ambient`, artist: "Lofi Girl", thumb: "https://i.ytimg.com/vi/5qap5aO4i9A/mqdefault.jpg" },
-        { id: "9bZkp7q19f0", title: `${query} - Official Video Mix`, artist: "YouTube Music", thumb: "https://i.ytimg.com/vi/9bZkp7q19f0/mqdefault.jpg" }
+        { id: "5qap5aO4i9A", title: `${query} - Coffee Shop Ambient`, artist: "Lofi Girl", thumb: "https://i.ytimg.com/vi/5qap5aO4i9A/mqdefault.jpg" }
       ];
       renderResults();
-      showToast("Modalità risorsa protetta attiva 🎶");
-      return;
+      showToast("Server non raggiungibile, fallback attivo 🎶");
     }
-
-    currentList = data.map(item => ({
-      id: item.videoId,
-      title: item.title,
-      artist: item.author || "YouTube",
-      thumb: item.videoThumbnails && item.videoThumbnails.length > 0 
-        ? item.videoThumbnails[0].url 
-        : `https://i.ytimg.com/vi/${item.videoId}/mqdefault.jpg`
-    })).filter(tr => tr.id);
-
-    renderResults();
   }
 
   function showEmptyState(){
@@ -258,7 +240,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   }
 
-  // Gestione Form e Input senza ricaricamento pagina
   if (els.searchForm) {
     els.searchForm.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -305,7 +286,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // ---------- YouTube IFrame API ----------
+  // ---------- YOUTUBE IFRAME API ----------
   window.onYouTubeIframeAPIReady = function(){
     try {
       ytPlayer = new YT.Player('yt-player-host', {
