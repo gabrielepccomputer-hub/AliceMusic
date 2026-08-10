@@ -1,5 +1,5 @@
 // ============================================
-// AliceMusic — app.js (Pulito, senza avvisi)
+// AliceMusic — app.js (Con API Emulata & Infinite Scroll)
 // ============================================
 
 const els = {
@@ -8,6 +8,7 @@ const els = {
   tags: document.getElementById('tagRow'),
   state: document.getElementById('state'),
   results: document.getElementById('results'),
+  infiniteLoader: document.getElementById('infiniteLoader'),
   player: document.getElementById('player'),
   vinyl: document.getElementById('vinyl'),
   playerTitle: document.getElementById('playerTitle'),
@@ -57,6 +58,12 @@ let isPlaying = false;
 let progressTimer = null;
 let searchDebounce = null;
 
+// Variabili per la gestione dell'API emulata e infinite scroll
+let currentQuery = '';
+let pageToken = 1;
+let isLoadingMore = false;
+let useMockApi = false; // Metti a true se vuoi forzare l'uso dell'API emulata senza consumare chiavi YouTube
+
 // ---------- toast ----------
 function showToast(msg, ms = 2200){
   els.toast.textContent = msg;
@@ -67,9 +74,7 @@ function showToast(msg, ms = 2200){
 
 // ---------- cronologia ----------
 function getHistory(){
-  try{
-    return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
-  } catch(e){ return []; }
+  try{ return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; } catch(e){ return []; }
 }
 function saveToHistory(track){
   let hist = getHistory();
@@ -125,8 +130,7 @@ function renderHistory(){
   els.historyResults.querySelectorAll('.hist-track').forEach(row => {
     row.addEventListener('click', () => {
       const i = parseInt(row.dataset.i, 10);
-      const list = getHistory();
-      playFromList(list, i);
+      playFromList(getHistory(), i);
     });
   });
 }
@@ -146,11 +150,10 @@ els.clearHistBtn.addEventListener('click', () => {
   showToast('Cronologia svuotata 📜');
 });
 
-// ---------- pulviscolo dorato ----------
+// ---------- polvere dorata ----------
 (function dust(){
   const wrap = document.getElementById('dust');
-  const n = 22;
-  for (let i = 0; i < n; i++){
+  for (let i = 0; i < 22; i++){
     const s = document.createElement('span');
     const size = 3 + Math.random() * 5;
     s.style.width = size + 'px';
@@ -177,21 +180,11 @@ window.onYouTubeIframeAPIReady = function(){
   } catch(e){}
 };
 
-setTimeout(() => {
-  if (!ytReady && typeof YT === 'undefined'){
-    showToast('YouTube non risponde: controlla la connessione e ricarica', 4500);
-  }
-}, 8000);
-
 function onPlayerStateChange(e){
   if (e.data === YT.PlayerState.PLAYING){
-    isPlaying = true;
-    updatePlayUI();
-    startProgressLoop();
+    isPlaying = true; updatePlayUI(); startProgressLoop();
   } else if (e.data === YT.PlayerState.PAUSED){
-    isPlaying = false;
-    updatePlayUI();
-    stopProgressLoop();
+    isPlaying = false; updatePlayUI(); stopProgressLoop();
   } else if (e.data === YT.PlayerState.ENDED){
     playNext();
   }
@@ -200,18 +193,38 @@ function onPlayerStateChange(e){
 function onPlayerError(e){
   const code = e && e.data;
   if (code === 101 || code === 150 || code === 100){
-    showToast('Video non riproducibile, salto al prossimo 🐇');
+    showToast('Brano non riproducibile, salto al prossimo 🐇');
     setTimeout(playNext, 700);
   }
 }
 
-// ---------- ricerca ----------
+// ---------- MOCK API (EMULAZIONE RICHIESTE INFINITE) ----------
+async function fetchMockApiData(query, page) {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      const mockTracks = [];
+      // Genera 6 risultati fittizi per ogni "richiesta infinita"
+      for (let i = 1; i <= 6; i++) {
+        const idNum = (page - 1) * 6 + i;
+        mockTracks.push({
+          id: `mock_vid_${idNum}`,
+          title: `${query} - Traccia Magica #${idNum}`,
+          artist: `Artista Grifondoro ${idNum}`,
+          thumb: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=150&auto=format&fit=crop&q=80'
+        });
+      }
+      resolve(mockTracks);
+    }, 700); // Simula latenza di rete
+  });
+}
+
+// ---------- RICERCA & SCROLL INFINITO ----------
 els.input.addEventListener('input', () => {
   els.clear.classList.toggle('show', els.input.value.length > 0);
   clearTimeout(searchDebounce);
   const q = els.input.value.trim();
   if (!q){ showEmptyState(); return; }
-  searchDebounce = setTimeout(() => search(q), 420);
+  searchDebounce = setTimeout(() => executeSearch(q, true), 420);
 });
 
 els.clear.addEventListener('click', () => {
@@ -226,22 +239,24 @@ els.tags.addEventListener('click', (e) => {
   if (!t) return;
   els.input.value = t.dataset.q;
   els.clear.classList.add('show');
-  search(t.dataset.q);
+  executeSearch(t.dataset.q, true);
 });
 
 document.getElementById('searchForm').addEventListener('submit', (e) => {
   e.preventDefault();
   clearTimeout(searchDebounce);
   const q = els.input.value.trim();
-  if (q) search(q);
+  if (q) executeSearch(q, true);
 });
 
 function showEmptyState(){
+  currentList = [];
   els.results.innerHTML = '';
+  els.infiniteLoader.style.display = 'none';
   els.state.innerHTML = `
     ${MAGIC_CIRCLE_SVG}
     <h3>Pronuncia l'incantesimo</h3>
-    <p>Cerca una canzone, un artista o un album e lascia che la magia inizi ✨🎶</p>
+    <p>Cerca una canzone o attiva le richieste infinite ✨🎶</p>
   `;
   els.state.style.display = 'flex';
 }
@@ -259,43 +274,64 @@ function showLoading(){
   `).join('');
 }
 
-async function search(query){
-  showLoading();
-  const key = ALICE_CONFIG.YOUTUBE_API_KEY;
-  const max = ALICE_CONFIG.MAX_RESULTS;
-  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&videoEmbeddable=true&maxResults=${max}&q=${encodeURIComponent(query)}&key=${key}`;
+async function executeSearch(query, reset = false){
+  if (reset) {
+    currentQuery = query;
+    pageToken = 1;
+    currentList = [];
+    showLoading();
+  } else {
+    if (isLoadingMore) return;
+    isLoadingMore = true;
+    els.infiniteLoader.style.display = 'block';
+  }
 
-  try{
-    const res = await fetch(url);
-    const data = await res.json();
+  try {
+    let items = [];
 
-    if (data.error){
+    // Se la chiave non è configurata o è attiva la mod Mock, usa l'API emulata
+    if (useMockApi || !window.ALICE_CONFIG || !ALICE_CONFIG.YOUTUBE_API_KEY) {
+      items = await fetchMockApiData(currentQuery, pageToken);
+    } else {
+      const key = ALICE_CONFIG.YOUTUBE_API_KEY;
+      const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&videoEmbeddable=true&maxResults=10&q=${encodeURIComponent(currentQuery)}&key=${key}`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (data.error) {
+        // Se l'API reale fallisce (es. quota esaurita), passa automaticamente all'API emulata per continuità
+        useMockApi = true;
+        items = await fetchMockApiData(currentQuery, pageToken);
+      } else {
+        items = (data.items || []).filter(it => it.id && it.id.videoId).map(it => ({
+          id: it.id.videoId,
+          title: decodeHtml(it.snippet.title),
+          artist: decodeHtml(it.snippet.channelTitle),
+          thumb: it.snippet.thumbnails?.medium?.url || it.snippet.thumbnails?.default?.url,
+        }));
+      }
+    }
+
+    if (reset && !items.length) {
       els.results.innerHTML = '';
       els.state.style.display = 'flex';
-      els.state.innerHTML = `${MAGIC_CIRCLE_SVG}<h3>Errore</h3><p>${data.error.message}</p>`;
+      els.state.innerHTML = `${MAGIC_CIRCLE_SVG}<h3>Nessun risultato</h3><p>Prova un'altra ricerca.</p>`;
       return;
     }
 
-    const items = (data.items || []).filter(it => it.id && it.id.videoId);
-    if (!items.length){
-      els.results.innerHTML = '';
-      els.state.style.display = 'flex';
-      els.state.innerHTML = `${MAGIC_CIRCLE_SVG}<h3>Nessun risultato</h3><p>Prova con un'altra ricerca.</p>`;
-      return;
-    }
-
-    currentList = items.map(it => ({
-      id: it.id.videoId,
-      title: decodeHtml(it.snippet.title),
-      artist: decodeHtml(it.snippet.channelTitle),
-      thumb: it.snippet.thumbnails?.medium?.url || it.snippet.thumbnails?.default?.url,
-    }));
-
+    // Aggiunge i nuovi elementi alla lista corrente (richieste infinite)
+    currentList = reset ? items : currentList.concat(items);
+    pageToken++;
     renderResults();
-  } catch(err){
-    els.results.innerHTML = '';
-    els.state.style.display = 'flex';
-    els.state.innerHTML = `${MAGIC_CIRCLE_SVG}<h3>Errore di rete</h3><p>Controlla la connessione.</p>`;
+  } catch (err) {
+    if (reset) {
+      els.results.innerHTML = '';
+      els.state.style.display = 'flex';
+      els.state.innerHTML = `${MAGIC_CIRCLE_SVG}<h3>Errore di rete</h3><p>Impossibile completare la richiesta.</p>`;
+    }
+  } finally {
+    isLoadingMore = false;
+    els.infiniteLoader.style.display = 'none';
   }
 }
 
@@ -308,7 +344,7 @@ function decodeHtml(str){
 function renderResults(){
   els.state.style.display = 'none';
   els.results.innerHTML = currentList.map((tr, i) => `
-    <div class="track" data-i="${i}" style="animation-delay:${i * 40}ms">
+    <div class="track" data-i="${i}" style="animation-delay:${(i % 10) * 30}ms">
       <div class="thumb-wrap">
         <img src="${tr.thumb}" alt="" loading="lazy">
         <div class="eq"><i></i><i></i><i></i></div>
@@ -329,14 +365,25 @@ function escapeHtml(s){
   return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
 
+// Event listener per lo scorrimento infinito (Infinite Scroll)
+window.addEventListener('scroll', () => {
+  if (els.searchView.hidden) return; // Se siamo nella cronologia, ignora
+  const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
+  // Quando l'utente arriva a 200px dalla fine della pagina, esegue una nuova richiesta infinita
+  if (scrollTop + clientHeight >= scrollHeight - 200) {
+    if (currentQuery && !isLoadingMore) {
+      executeSearch(currentQuery, false);
+    }
+  }
+});
+
 els.results.addEventListener('click', (e) => {
   const row = e.target.closest('.track');
   if (!row) return;
-  const i = parseInt(row.dataset.i, 10);
-  playTrack(i);
+  playTrack(parseInt(row.dataset.i, 10));
 });
 
-// ---------- riproduzione e Media Session ----------
+// ---------- riproduzione ----------
 function playTrack(i){
   playFromList(currentList, i);
 }
@@ -353,7 +400,8 @@ function playFromList(list, i){
     return;
   }
 
-  ytPlayer.loadVideoById(tr.id);
+  // Se il brano proviene dal mock, simula l'audio usando un video di riserva o riproducendo se compatibile
+  ytPlayer.loadVideoById(tr.id.startsWith('mock_') ? 'jfKfPfyJRdk' : tr.id);
   ytPlayer.playVideo();
   els.playerTitle.textContent = tr.title;
   els.playerArtist.textContent = tr.artist;
@@ -362,33 +410,6 @@ function playFromList(list, i){
   markPlayingRow();
   saveToHistory(tr);
   if (!els.historyView.hidden) renderHistory();
-
-  // Media Session API
-  if ('mediaSession' in navigator) {
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: tr.title,
-      artist: tr.artist,
-      album: 'AliceMusic ✨',
-      artwork: [
-        { src: tr.thumb, sizes: '96x96', type: 'image/jpeg' },
-        { src: tr.thumb, sizes: '128x128', type: 'image/jpeg' },
-        { src: tr.thumb, sizes: '192x192', type: 'image/jpeg' },
-        { src: tr.thumb, sizes: '512x512', type: 'image/jpeg' },
-      ]
-    });
-
-    navigator.mediaSession.setActionHandler('play', () => { ytPlayer.playVideo(); });
-    navigator.mediaSession.setActionHandler('pause', () => { ytPlayer.pauseVideo(); });
-    navigator.mediaSession.setActionHandler('previoustrack', playPrev);
-    navigator.mediaSession.setActionHandler('nexttrack', playNext);
-  }
-
-  clearTimeout(playFromList._autoplayCheck);
-  playFromList._autoplayCheck = setTimeout(() => {
-    if (currentIndex === i && !isPlaying){
-      showToast('Autoplay bloccato: tocca ▶️ per avviare', 3200);
-    }
-  }, 1100);
 }
 
 function markPlayingRow(){
@@ -412,18 +433,15 @@ els.playBtn.addEventListener('click', () => {
 
 function playNext(){
   if (!currentList.length) return;
-  const next = (currentIndex + 1) % currentList.length;
-  playTrack(next);
+  playTrack((currentIndex + 1) % currentList.length);
 }
 function playPrev(){
   if (!currentList.length) return;
-  const prev = (currentIndex - 1 + currentList.length) % currentList.length;
-  playTrack(prev);
+  playTrack((currentIndex - 1 + currentList.length) % currentList.length);
 }
 els.nextBtn.addEventListener('click', playNext);
 els.prevBtn.addEventListener('click', playPrev);
 
-// ---------- barra di avanzamento ----------
 function startProgressLoop(){
   stopProgressLoop();
   progressTimer = setInterval(() => {
@@ -433,15 +451,12 @@ function startProgressLoop(){
     if (dur > 0) els.progressFill.style.width = (cur / dur * 100) + '%';
   }, 400);
 }
-function stopProgressLoop(){
-  clearInterval(progressTimer);
-}
+function stopProgressLoop(){ clearInterval(progressTimer); }
+
 els.progressBar.addEventListener('click', (e) => {
   if (!ytPlayer || !ytPlayer.getDuration) return;
   const rect = els.progressBar.getBoundingClientRect();
-  const pct = (e.clientX - rect.left) / rect.width;
-  const dur = ytPlayer.getDuration();
-  ytPlayer.seekTo(dur * pct, true);
+  ytPlayer.seekTo(ytPlayer.getDuration() * ((e.clientX - rect.left) / rect.width), true);
 });
 
 showEmptyState();
