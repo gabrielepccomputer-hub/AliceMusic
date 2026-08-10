@@ -28,10 +28,8 @@ html,body{
 }
 button, input{ font-family:inherit; }
 
-/* ---------- scrollbar sottile ---------- */
 ::-webkit-scrollbar{ width:0; height:0; }
 
-/* ---------- sfondo animato: pulviscolo dorato ---------- */
 .dust{
   position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden;
 }
@@ -45,7 +43,6 @@ button, input{ font-family:inherit; }
   to{ transform: translateY(-115vh) translateX(20px) scale(.4); opacity:0; }
 }
 
-/* ---------- layout principale ---------- */
 .app{
   position:relative; z-index:1;
   max-width:560px; margin:0 auto;
@@ -54,7 +51,6 @@ button, input{ font-family:inherit; }
   padding: max(14px, env(safe-area-inset-top)) 14px calc(96px + var(--safe-bottom));
 }
 
-/* ---------- header ---------- */
 .header{
   display:flex; align-items:center; gap:12px;
   padding: 6px 4px 18px;
@@ -62,7 +58,7 @@ button, input{ font-family:inherit; }
 .watch{
   width:46px; height:46px; flex:0 0 auto;
   border-radius:50%;
-  background: conic-gradient(from 0deg, var(--gold), var(--gold-deep), var(--gold-pale), var(--gold));
+  background: conic-gradient(from 0deg, var(--gold), var(--maroon), var(--gold-pale), var(--gold));
   display:flex; align-items:center; justify-content:center;
   animation: spin 6s linear infinite;
   box-shadow: 0 0 18px rgba(255,184,0,.35);
@@ -70,7 +66,7 @@ button, input{ font-family:inherit; }
 .watch::after{
   content:''; width:30px; height:30px; border-radius:50%;
   background: var(--ink);
-  box-shadow: inset 0 0 0 2px var(--gold-pale);
+  box-shadow: inset 0 0 0 2px var(--gold-pale), inset 0 0 0 4px var(--maroon-deep);
 }
 @keyframes spin{ to{ transform: rotate(360deg); } }
 
@@ -83,7 +79,6 @@ button, input{ font-family:inherit; }
   display:block; font-size:11px; color: var(--cream-dim); letter-spacing:2.5px; text-transform:uppercase; margin-top:1px;
 }
 
-/* ---------- barra di ricerca "Drink Me" ---------- */
 .search-wrap{
   position:relative;
   margin-bottom:16px;
@@ -125,7 +120,6 @@ button, input{ font-family:inherit; }
 }
 .tag:active{ transform: scale(.94); background: rgba(255,184,0,.22); }
 
-/* ---------- stato: cerchio magico animato ---------- */
 .state{
   flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
   text-align:center; gap:14px; padding: 30px 20px; color: var(--cream-dim);
@@ -155,15 +149,6 @@ button, input{ font-family:inherit; }
 .state h3{ margin:0; color: var(--gold-pale); font-family:'Baloo 2'; font-size:18px; }
 .state p{ margin:0; font-size:13.5px; max-width:280px; line-height:1.5; }
 
-/* ---------- stemma leone (header) ---------- */
-.watch{
-  background: conic-gradient(from 0deg, var(--gold), var(--maroon), var(--gold-pale), var(--gold));
-}
-.watch::after{
-  box-shadow: inset 0 0 0 2px var(--gold-pale), inset 0 0 0 4px var(--maroon-deep);
-}
-
-/* ---------- tab bar ---------- */
 .tabbar{
   display:flex; gap:8px; margin: 2px 0 14px;
   background: rgba(0,0,0,.22);
@@ -181,23 +166,8 @@ button, input{ font-family:inherit; }
   box-shadow: 0 4px 14px rgba(212,175,55,.3);
 }
 
-/* ---------- pulsante "apri su youtube" ---------- */
-.yt-link{
-  flex:0 0 auto; width:34px; height:34px; border-radius:50%;
-  display:flex; align-items:center; justify-content:center;
-  background: rgba(212,175,55,.1); border:1px solid rgba(212,175,55,.25);
-  color: var(--gold-pale); text-decoration:none;
-}
-.yt-link:active{ transform: scale(.9); background: rgba(212,175,55,.25); }
-
-.track-actions{ display:flex; align-items:center; gap:6px; flex:0 0 auto; }
-
-/* ---------- riga cronologia ---------- */
 .hist-time{
   font-size:11px; color: var(--gold-pale); opacity:.8; margin-top:2px;
-}
-.hist-empty-icon{
-  width:60px; height:60px; opacity:.5;
 }
 .clear-hist{
   align-self:center; margin-top:10px;
@@ -207,7 +177,6 @@ button, input{ font-family:inherit; }
 }
 .clear-hist:active{ background: rgba(116,0,1,.5); }
 
-/* ---------- lista risultati ---------- */
 .results{ display:flex; flex-direction:column; gap:10px; padding-bottom:10px; }
 
 .track{
@@ -263,7 +232,6 @@ button, input{ font-family:inherit; }
   border:none;
 }
 
-/* ---------- skeleton di caricamento ---------- */
 .skel{
   display:flex; align-items:center; gap:12px;
   border-radius: var(--radius); padding:9px;
@@ -281,7 +249,6 @@ button, input{ font-family:inherit; }
 .skel .line.w40{ width:40%; }
 @keyframes shimmer{ 0%{ background-position:200% 0; } 100%{ background-position:-200% 0; } }
 
-/* ---------- mini player ---------- */
 .player{
   position:fixed; left:0; right:0; bottom:0; z-index:5;
   max-width:560px; margin:0 auto;
@@ -302,7 +269,7 @@ button, input{ font-family:inherit; }
 
 .progress{
   width:100%; height:4px; background: rgba(255,255,255,.08);
-  cursor:pointer; position:relative; touch-action: none;
+  cursor:pointer; position:relative;
 }
 .progress-fill{
   height:100%; width:0%; background: linear-gradient(90deg, var(--gold-deep), var(--gold));
@@ -349,81 +316,6 @@ button, input{ font-family:inherit; }
 }
 .ctrl-play:active{ background: var(--gold-deep); }
 
-/* ---------- scheda "ora in riproduzione" a schermo intero ---------- */
-.now-playing{
-  position:fixed; inset:0; z-index:50;
-  background: radial-gradient(circle at 50% 0%, #3a1109 0%, var(--ink) 60%, #050302 100%);
-  display:flex; flex-direction:column; align-items:center;
-  padding: max(20px, env(safe-area-inset-top)) 26px calc(30px + var(--safe-bottom));
-  animation: np-in .32s cubic-bezier(.2,.9,.25,1);
-}
-.now-playing[hidden]{ display:none; }
-@keyframes np-in{
-  from{ opacity:0; transform: translateY(28px); }
-  to{ opacity:1; transform: translateY(0); }
-}
-.np-close{
-  align-self:flex-end;
-  width:38px; height:38px; border-radius:50%; border:none;
-  background: rgba(255,255,255,.06); color: var(--cream);
-  font-size:18px; margin-bottom:18px;
-}
-.np-close:active{ background: rgba(255,255,255,.15); transform: scale(.9); }
-
-.np-art{
-  width:min(72vw, 280px); height:min(72vw, 280px); border-radius:24px; overflow:hidden;
-  border: 1px solid rgba(212,175,55,.3);
-  box-shadow: 0 20px 50px rgba(0,0,0,.5), 0 0 40px rgba(212,175,55,.12);
-  margin: 10px auto 26px;
-}
-.np-art img{ width:100%; height:100%; object-fit:cover; display:block; }
-
-.np-title{
-  font-family:'Baloo 2'; font-weight:700; font-size:19px; color: var(--gold-pale);
-  text-align:center; max-width:100%; padding:0 10px;
-}
-.np-artist{ font-size:13.5px; color: var(--cream-dim); margin-top:4px; text-align:center; }
-
-.np-progress-wrap{ width:100%; max-width:400px; margin-top:34px; }
-.np-progress{
-  position:relative; width:100%; height:5px; border-radius:999px;
-  background: rgba(255,255,255,.1); cursor:pointer;
-  touch-action: none;
-}
-.np-progress::before{
-  /* area di tocco invisibile più larga della barra visibile, per dita imprecise */
-  content:''; position:absolute; left:0; right:0; top:-14px; bottom:-14px;
-}
-.np-progress-fill{
-  height:100%; width:0%; border-radius:999px;
-  background: linear-gradient(90deg, var(--gold-deep), var(--gold));
-}
-.np-progress-thumb{
-  position:absolute; top:50%; left:0%; width:15px; height:15px; border-radius:50%;
-  background: var(--gold-pale); border:2px solid var(--gold-deep);
-  transform: translate(-50%, -50%);
-  box-shadow: 0 2px 8px rgba(0,0,0,.4);
-}
-.np-times{
-  display:flex; justify-content:space-between; margin-top:8px;
-  font-size:11.5px; color: var(--cream-dim);
-}
-
-.np-controls{
-  display:flex; align-items:center; gap:30px; margin-top:38px;
-}
-.np-ctrl-btn{
-  border:none; background:none; color: var(--cream);
-  width:52px; height:52px; border-radius:50%;
-  display:flex; align-items:center; justify-content:center;
-}
-.np-ctrl-btn:active{ transform: scale(.88); background: rgba(255,255,255,.08); }
-.np-play{
-  width:70px; height:70px; background: var(--gold); color: var(--ink);
-}
-.np-play:active{ background: var(--gold-deep); }
-
-/* ---------- toast ---------- */
 .toast{
   position:fixed; left:50%; bottom:110px; transform: translateX(-50%) translateY(20px);
   background: var(--maroon); color:#fff; font-size:13px; font-weight:600;
@@ -433,16 +325,4 @@ button, input{ font-family:inherit; }
 }
 .toast.show{ opacity:1; transform: translateX(-50%) translateY(0); }
 
-/* player ospitante iframe nascosto */
 #yt-player-host{ position:fixed; width:160px; height:90px; top:-1000px; left:-1000px; pointer-events:none; }
-
-/* ---------- responsive piccoli schermi ---------- */
-@media (max-width:340px){
-  .brand h1{ font-size:20px; }
-  .track-info .t{ font-size:13.5px; }
-}
-
-/* rispetta reduce motion */
-@media (prefers-reduced-motion: reduce){
-  *{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
-}
