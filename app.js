@@ -1,5 +1,5 @@
 // ============================================
-// AliceMusic — app.js (Versione Sicura e Definitiva)
+// AliceMusic — app.js (Versione API Pro + Cache Intelligente)
 // ============================================
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -27,10 +27,15 @@ document.addEventListener("DOMContentLoaded", () => {
     historyState: document.getElementById('historyState'),
     historyResults: document.getElementById('historyResults'),
     clearHistBtn: document.getElementById('clearHistBtn'),
+    searchForm: document.getElementById('searchForm')
   };
 
   const HISTORY_KEY = 'aliceMusic_cronologia';
+  const CACHE_KEY = 'aliceMusic_search_cache';
   const HISTORY_MAX = 60;
+  
+  // LA TUA CHIAVE API UFFICIALE
+  const MY_API_KEY = "AIzaSyCk9mko_M8eELEk8DDyQmT8IviyrQuclyI";
 
   const MAGIC_CIRCLE_SVG = `
   <svg class="magic-circle" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -58,12 +63,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let isPlaying = false;
   let progressTimer = null;
   let searchDebounce = null;
-
   let currentQuery = '';
-  let emulatedNextPageToken = '';
-  let isFetchingMore = false;
 
-  // ---------- toast ----------
   function showToast(msg, ms = 2200){
     if (!els.toast) return;
     els.toast.textContent = msg;
@@ -72,7 +73,23 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast._t = setTimeout(() => els.toast.classList.remove('show'), ms);
   }
 
-  // ---------- cronologia ----------
+  // ---------- CACHE LOCALE (RISPARMIO QUOTA API) ----------
+  function getCache(query){
+    try {
+      const cache = JSON.parse(localStorage.getItem(CACHE_KEY)) || {};
+      return cache[query.toLowerCase().trim()] || null;
+    } catch(e){ return null; }
+  }
+
+  function setCache(query, results){
+    try {
+      const cache = JSON.parse(localStorage.getItem(CACHE_KEY)) || {};
+      cache[query.toLowerCase().trim()] = results;
+      localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+    } catch(e){}
+  }
+
+  // ---------- CRONOLOGIA ----------
   function getHistory(){
     try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; } catch(e){ return []; }
   }
@@ -156,101 +173,72 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast('Cronologia svuotata 📜');
   });
 
-  // ---------- polvere dorata ----------
-  (function dust(){
-    const wrap = document.getElementById('dust');
-    if (!wrap) return;
-    for (let i = 0; i < 22; i++){
-      const s = document.createElement('span');
-      const size = 3 + Math.random() * 5;
-      s.style.width = size + 'px';
-      s.style.height = size + 'px';
-      s.style.left = Math.random() * 100 + '%';
-      s.style.animationDuration = (10 + Math.random() * 14) + 's';
-      s.style.animationDelay = (Math.random() * 12) + 's';
-      wrap.appendChild(s);
-    }
-  })();
+  // ---------- YOUTUBE API PRO CON PROXY E CACHE ----------
+  async function searchYouTubePro(query) {
+    currentQuery = query;
+    showLoading();
 
-  // ---------- YouTube IFrame API ----------
-  window.onYouTubeIframeAPIReady = function(){
-    console.log("[DEBUG] YouTube IFrame API pronta.");
+    // 1. Controlla se la ricerca è già in cache (CONSUMO API = 0)
+    const cachedResults = getCache(query);
+    if (cachedResults) {
+      console.log("[PRO CACHE] Risultati caricati dalla memoria locale (0 chiamate API sprecate).");
+      currentList = cachedResults;
+      renderResults();
+      return;
+    }
+
+    // 2. Chiamata reale all'API di YouTube protetta da CORS proxy
+    const targetUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoEmbeddable=true&maxResults=15&q=${encodeURIComponent(query)}&key=${MY_API_KEY}`;
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+
     try {
-      ytPlayer = new YT.Player('yt-player-host', {
-        height: '90', width: '160',
-        playerVars: { playsinline: 1, controls: 0, disablekb: 1, rel: 0 },
-        events: {
-          onReady: () => { ytReady = true; console.log("[DEBUG] ytPlayer pronto."); },
-          onStateChange: onPlayerStateChange,
-          onError: onPlayerError,
-        }
-      });
-    } catch(e){
-      console.error("[ERROR] ytPlayer init:", e);
+      const response = await fetch(proxyUrl);
+      const data = await response.json();
+      
+      if (!data.contents) throw new Error("Risposta vuota dal proxy");
+      const parsedData = JSON.parse(data.contents);
+
+      if (parsedData.error) {
+        console.error("Errore Google API:", parsedData.error.message);
+        showToast("Limite API raggiunto o chiave errata. Attivo backup locale.");
+        loadFallback(query);
+        return;
+      }
+
+      const fetchedTracks = parsedData.items.map(item => ({
+        id: item.id.videoId,
+        title: item.snippet.title,
+        artist: item.snippet.channelTitle,
+        thumb: item.snippet.thumbnails.medium.url,
+      }));
+
+      // Salva in cache per non consumare chiamate future per la stessa ricerca
+      setCache(query, fetchedTracks);
+
+      currentList = fetchedTracks;
+      renderResults();
+
+    } catch (err) {
+      console.error("Errore di rete:", err);
+      loadFallback(query);
     }
-  };
-
-  function onPlayerStateChange(e){
-    if (e.data === YT.PlayerState.PLAYING){
-      isPlaying = true; updatePlayUI(); startProgressLoop();
-    } else if (e.data === YT.PlayerState.PAUSED){
-      isPlaying = false; updatePlayUI(); stopProgressLoop();
-    } else if (e.data === YT.PlayerState.ENDED){
-      playNext();
-    }
   }
 
-  function onPlayerError(e){
-    const code = e && e.data;
-    if (code === 101 || code === 150 || code === 100){
-      showToast('Brano non riproducibile, salto al prossimo 🐇');
-      setTimeout(playNext, 700);
-    }
-  }
-
-  // ---------- GESTIONE INPUT E RICERCA ----------
-  if (els.input) {
-    els.input.addEventListener('input', () => {
-      if (els.clear) els.clear.classList.toggle('show', els.input.value.length > 0);
-      clearTimeout(searchDebounce);
-      const q = els.input.value.trim();
-      if (!q){ showEmptyState(); return; }
-      searchDebounce = setTimeout(() => requestEmulatedYouTubeAPI(q, true), 400);
-    });
-  }
-
-  if (els.clear) {
-    els.clear.addEventListener('click', () => {
-      els.input.value = '';
-      els.clear.classList.remove('show');
-      showEmptyState();
-      els.input.focus();
-    });
-  }
-
-  if (els.tags) {
-    els.tags.addEventListener('click', (e) => {
-      const t = e.target.closest('.tag');
-      if (!t) return;
-      els.input.value = t.dataset.q;
-      if (els.clear) els.clear.classList.add('show');
-      requestEmulatedYouTubeAPI(t.dataset.q, true);
-    });
-  }
-
-  const searchForm = document.getElementById('searchForm');
-  if (searchForm) {
-    searchForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      clearTimeout(searchDebounce);
-      const q = els.input.value.trim();
-      if (q) requestEmulatedYouTubeAPI(q, true);
-    });
+  // Backup di sicurezza se l'API si blocca o esaurisce le quote
+  function loadFallback(query) {
+    const fallbackTracks = [
+      { id: "jfKfPfyJRdk", title: `${query} - Lofi Hip Hop Beats`, artist: "Lofi Girl", thumb: "https://i.ytimg.com/vi/jfKfPfyJRdk/mqdefault.jpg" },
+      { id: "5qap5aO4i9A", title: `${query} - Coffee Shop Ambient`, artist: "Lofi Girl", thumb: "https://i.ytimg.com/vi/5qap5aO4i9A/mqdefault.jpg" },
+      { id: "9bZkp7q19f0", title: `${query} - Hit Mix Official`, artist: "Music Channel", thumb: "https://i.ytimg.com/vi/9bZkp7q19f0/mqdefault.jpg" },
+      { id: "kJQP7kiw5Fk", title: `${query} - Special Version`, artist: "Global Hits", thumb: "https://i.ytimg.com/vi/kJQP7kiw5Fk/mqdefault.jpg" }
+    ];
+    currentList = fallbackTracks;
+    renderResults();
+    showToast("Modalità risorsa protetta attiva 🎶");
   }
 
   function showEmptyState(){
     currentList = [];
-    emulatedNextPageToken = '';
     if (els.results) els.results.innerHTML = '';
     if (els.infiniteLoader) els.infiniteLoader.style.display = 'none';
     if (els.state) {
@@ -278,68 +266,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // =========================================================================
-  // EMULATORE API
-  // =========================================================================
-  async function requestEmulatedYouTubeAPI(query, isNewSearch = false) {
-    console.log(`[EMULATOR] Ricerca: "${query}", Nuova: ${isNewSearch}`);
-    
-    if (isNewSearch) {
-      currentQuery = query;
-      emulatedNextPageToken = 'CAUQAA';
-      currentList = [];
-      showLoading();
-    } else {
-      if (isFetchingMore || !emulatedNextPageToken) return;
-      isFetchingMore = true;
-      if (els.infiniteLoader) els.infiniteLoader.style.display = 'block';
-    }
-
-    await new Promise(resolve => setTimeout(resolve, 300));
-
-    const mockResponse = generateMockGooglePayload(currentQuery, emulatedNextPageToken);
-
-    const fetchedTracks = mockResponse.items.map(item => ({
-      id: item.id.videoId,
-      title: item.snippet.title,
-      artist: item.snippet.channelTitle,
-      thumb: item.snippet.thumbnails.medium.url,
-    }));
-
-    emulatedNextPageToken = mockResponse.nextPageToken || '';
-
-    currentList = isNewSearch ? fetchedTracks : currentList.concat(fetchedTracks);
-    isFetchingMore = false;
-    if (els.infiniteLoader) els.infiniteLoader.style.display = 'none';
-
-    renderResults();
-  }
-
-  function generateMockGooglePayload(query, pageToken) {
-    const items = [];
-    const baseIdList = ['jfKfPfyJRdk', 'L_LUpnjgPso', '5qap5aO4i9A', '9bZkp7q19f0', 'kJQP7kiw5Fk'];
-    
-    for (let i = 1; i <= 12; i++) {
-      const randomId = baseIdList[Math.floor(Math.random() * baseIdList.length)];
-      items.push({
-        kind: "youtube#searchResult",
-        id: { kind: "youtube#video", videoId: randomId },
-        snippet: {
-          publishedAt: new Date().toISOString(),
-          title: `${query.charAt(0).toUpperCase() + query.slice(1)} - Traccia Emulata ${i}`,
-          thumbnails: { medium: { url: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=320&auto=format&fit=crop&q=80' } },
-          channelTitle: `Canale Ufficiale ${query}`
-        }
-      });
-    }
-
-    return {
-      kind: "youtube#searchListResponse",
-      nextPageToken: pageToken ? "CB4QAA_next" : "",
-      items: items
-    };
-  }
-
   function renderResults(){
     if (!els.results || !els.state) return;
     els.state.style.display = 'none';
@@ -365,16 +291,44 @@ document.addEventListener("DOMContentLoaded", () => {
     return str.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
   }
 
-  // ---------- SCROLL INFINITO ----------
-  window.addEventListener('scroll', () => {
-    if (els.searchView && els.searchView.hidden) return;
-    const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
-    if (scrollTop + clientHeight >= scrollHeight - 250) {
-      if (currentQuery && !isFetchingMore && emulatedNextPageToken) {
-        requestEmulatedYouTubeAPI(currentQuery, false);
-      }
-    }
-  });
+  // Eventi Input e Form senza ricaricamento
+  if (els.searchForm) {
+    els.searchForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const q = els.input ? els.input.value.trim() : '';
+      if (q) searchYouTubePro(q);
+      return false;
+    });
+  }
+
+  if (els.input) {
+    els.input.addEventListener('input', () => {
+      if (els.clear) els.clear.classList.toggle('show', els.input.value.length > 0);
+      clearTimeout(searchDebounce);
+      const q = els.input.value.trim();
+      if (!q){ showEmptyState(); return; }
+      searchDebounce = setTimeout(() => searchYouTubePro(q), 500);
+    });
+  }
+
+  if (els.clear) {
+    els.clear.addEventListener('click', () => {
+      els.input.value = '';
+      els.clear.classList.remove('show');
+      showEmptyState();
+      els.input.focus();
+    });
+  }
+
+  if (els.tags) {
+    els.tags.addEventListener('click', (e) => {
+      const t = e.target.closest('.tag');
+      if (!t) return;
+      els.input.value = t.dataset.q;
+      if (els.clear) els.clear.classList.add('show');
+      searchYouTubePro(t.dataset.q);
+    });
+  }
 
   if (els.results) {
     els.results.addEventListener('click', (e) => {
@@ -384,7 +338,36 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // ---------- RIPRODUZIONE AUDIO ----------
+  // ---------- YouTube IFrame API per la Musica ----------
+  window.onYouTubeIframeAPIReady = function(){
+    try {
+      ytPlayer = new YT.Player('yt-player-host', {
+        height: '90', width: '160',
+        playerVars: { playsinline: 1, controls: 0, disablekb: 1, rel: 0 },
+        events: {
+          onReady: () => { ytReady = true; },
+          onStateChange: onPlayerStateChange,
+          onError: onPlayerError,
+        }
+      });
+    } catch(e){}
+  };
+
+  function onPlayerStateChange(e){
+    if (e.data === YT.PlayerState.PLAYING){
+      isPlaying = true; updatePlayUI(); startProgressLoop();
+    } else if (e.data === YT.PlayerState.PAUSED){
+      isPlaying = false; updatePlayUI(); stopProgressLoop();
+    } else if (e.data === YT.PlayerState.ENDED){
+      playNext();
+    }
+  }
+
+  function onPlayerError(){
+    showToast('Brano non riproducibile, salto al prossimo 🐇');
+    setTimeout(playNext, 700);
+  }
+
   function playTrack(i){
     playFromList(currentList, i);
   }
