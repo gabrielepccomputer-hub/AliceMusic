@@ -357,6 +357,7 @@ button, input{ font-family:inherit; }
   padding: max(20px, env(safe-area-inset-top)) 26px calc(30px + var(--safe-bottom));
   animation: np-in .32s cubic-bezier(.2,.9,.25,1);
 }
+.now-playing[hidden]{ display:none; }
 @keyframes np-in{
   from{ opacity:0; transform: translateY(28px); }
   to{ opacity:1; transform: translateY(0); }
