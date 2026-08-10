@@ -12,7 +12,7 @@
 <link rel="icon" href="icon-512.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>AliceMusic</title>
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
 
@@ -70,8 +70,8 @@
   <div class="player-inner">
     <div class="progress" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
     <div class="player-row">
-      <div class="vinyl" id="vinyl" role="button" aria-label="Apri riproduzione a schermo intero"><img src="" alt=""></div>
-      <div class="player-meta" id="openNowPlaying">
+      <div class="vinyl" id="vinyl"><img src="" alt=""></div>
+      <div class="player-meta">
         <div class="t" id="playerTitle">—</div>
         <div class="a" id="playerArtist">—</div>
       </div>
@@ -90,45 +90,14 @@
   </div>
 </div>
 
-<!-- scheda "ora in riproduzione" a schermo intero -->
-<div class="now-playing" id="nowPlaying" hidden>
-  <button class="np-close" id="npClose" aria-label="Chiudi">✕</button>
-  <div class="np-art"><img id="npArt" src="" alt=""></div>
-  <div class="np-title" id="npTitle">—</div>
-  <div class="np-artist" id="npArtist">—</div>
-
-  <div class="np-progress-wrap">
-    <div class="np-progress" id="npProgressBar">
-      <div class="np-progress-fill" id="npProgressFill"></div>
-      <div class="np-progress-thumb" id="npProgressThumb"></div>
-    </div>
-    <div class="np-times">
-      <span id="npTimeCur">0:00</span>
-      <span id="npTimeDur">0:00</span>
-    </div>
-  </div>
-
-  <div class="np-controls">
-    <button class="np-ctrl-btn" id="npPrevBtn" aria-label="Precedente">
-      <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zM20 6v12l-8.5-6z"/></svg>
-    </button>
-    <button class="np-ctrl-btn np-play" id="npPlayBtn" aria-label="Play/Pausa">
-      <svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-    </button>
-    <button class="np-ctrl-btn" id="npNextBtn" aria-label="Successivo">
-      <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM4 6v12l8.5-6z"/></svg>
-    </button>
-  </div>
-</div>
-
 <div class="toast" id="toast"></div>
 
 <!-- player YouTube nascosto (audio) -->
 <div id="yt-player-host"></div>
 
-<script src="config.js?v=5"></script>
+<script src="config.js"></script>
 <script src="https://www.youtube.com/iframe_api"></script>
-<script src="app.js?v=5"></script>
+<script src="app.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
