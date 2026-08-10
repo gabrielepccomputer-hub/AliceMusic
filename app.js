@@ -25,6 +25,20 @@ const els = {
   historyState: document.getElementById('historyState'),
   historyResults: document.getElementById('historyResults'),
   clearHistBtn: document.getElementById('clearHistBtn'),
+  openNowPlaying: document.getElementById('openNowPlaying'),
+  nowPlaying: document.getElementById('nowPlaying'),
+  npClose: document.getElementById('npClose'),
+  npArt: document.getElementById('npArt'),
+  npTitle: document.getElementById('npTitle'),
+  npArtist: document.getElementById('npArtist'),
+  npProgressBar: document.getElementById('npProgressBar'),
+  npProgressFill: document.getElementById('npProgressFill'),
+  npProgressThumb: document.getElementById('npProgressThumb'),
+  npTimeCur: document.getElementById('npTimeCur'),
+  npTimeDur: document.getElementById('npTimeDur'),
+  npPlayBtn: document.getElementById('npPlayBtn'),
+  npPrevBtn: document.getElementById('npPrevBtn'),
+  npNextBtn: document.getElementById('npNextBtn'),
 };
 
 const HISTORY_KEY = 'aliceMusic_cronologia';
@@ -403,6 +417,12 @@ function playFromList(list, i){
   markPlayingRow();
   saveToHistory(tr);
   if (!els.historyView.hidden) renderHistory();
+  updateMediaSession(tr);
+  if (!els.nowPlaying.hidden){
+    els.npArt.src = tr.thumb;
+    els.npTitle.textContent = tr.title;
+    els.npArtist.textContent = tr.artist;
+  }
 
   // il browser a volte blocca l'autoplay: se dopo un secondo non è partito,
   // avvisa l'utente di toccare play a mano (quel tap è un gesto diretto,
@@ -423,13 +443,25 @@ function markPlayingRow(){
 
 function updatePlayUI(){
   els.vinyl.classList.toggle('spin', isPlaying);
-  els.playBtn.innerHTML = isPlaying
+  const icon = isPlaying
     ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
     : '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+  els.playBtn.innerHTML = icon;
+  els.npPlayBtn.innerHTML = isPlaying
+    ? '<svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
+    : '<svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
   markPlayingRow();
+
+  if ('mediaSession' in navigator){
+    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+  }
 }
 
 els.playBtn.addEventListener('click', () => {
+  if (!ytPlayer || currentIndex === -1) return;
+  if (isPlaying) ytPlayer.pauseVideo(); else ytPlayer.playVideo();
+});
+els.npPlayBtn.addEventListener('click', () => {
   if (!ytPlayer || currentIndex === -1) return;
   if (isPlaying) ytPlayer.pauseVideo(); else ytPlayer.playVideo();
 });
@@ -446,6 +478,74 @@ function playPrev(){
 }
 els.nextBtn.addEventListener('click', playNext);
 els.prevBtn.addEventListener('click', playPrev);
+els.npNextBtn.addEventListener('click', playNext);
+els.npPrevBtn.addEventListener('click', playPrev);
+
+// ---------- scheda "ora in riproduzione" a schermo intero ----------
+function openNowPlaying(){
+  if (currentIndex === -1) return;
+  const tr = currentList[currentIndex];
+  els.npArt.src = tr.thumb;
+  els.npTitle.textContent = tr.title;
+  els.npArtist.textContent = tr.artist;
+  els.nowPlaying.hidden = false;
+}
+function closeNowPlaying(){
+  els.nowPlaying.hidden = true;
+}
+els.openNowPlaying.addEventListener('click', openNowPlaying);
+els.vinyl.addEventListener('click', openNowPlaying);
+els.npClose.addEventListener('click', closeNowPlaying);
+
+// trascinamento sulla barra grande della scheda a schermo intero
+let npDragging = false;
+function npSeekFromEvent(e){
+  const rect = els.npProgressBar.getBoundingClientRect();
+  const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+  const pct = Math.min(1, Math.max(0, x / rect.width));
+  els.npProgressFill.style.width = (pct * 100) + '%';
+  els.npProgressThumb.style.left = (pct * 100) + '%';
+  return pct;
+}
+els.npProgressBar.addEventListener('pointerdown', (e) => {
+  npDragging = true;
+  npSeekFromEvent(e);
+  els.npProgressBar.setPointerCapture(e.pointerId);
+});
+els.npProgressBar.addEventListener('pointermove', (e) => {
+  if (npDragging) npSeekFromEvent(e);
+});
+els.npProgressBar.addEventListener('pointerup', (e) => {
+  if (!npDragging) return;
+  npDragging = false;
+  if (!ytPlayer || !ytPlayer.getDuration) return;
+  const pct = npSeekFromEvent(e);
+  ytPlayer.seekTo(ytPlayer.getDuration() * pct, true);
+});
+
+function formatTime(s){
+  if (!isFinite(s) || s < 0) s = 0;
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60).toString().padStart(2, '0');
+  return `${m}:${sec}`;
+}
+
+// ---------- Media Session: controlli su schermata di blocco / notifica ----------
+function updateMediaSession(tr){
+  if (!('mediaSession' in navigator)) return;
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: tr.title,
+    artist: tr.artist,
+    album: 'AliceMusic',
+    artwork: [
+      { src: tr.thumb, sizes: '320x180', type: 'image/jpeg' }
+    ]
+  });
+  navigator.mediaSession.setActionHandler('play', () => ytPlayer && ytPlayer.playVideo());
+  navigator.mediaSession.setActionHandler('pause', () => ytPlayer && ytPlayer.pauseVideo());
+  navigator.mediaSession.setActionHandler('previoustrack', playPrev);
+  navigator.mediaSession.setActionHandler('nexttrack', playNext);
+}
 
 // ---------- barra di avanzamento ----------
 function startProgressLoop(){
@@ -454,7 +554,16 @@ function startProgressLoop(){
     if (!ytPlayer || !ytPlayer.getDuration) return;
     const dur = ytPlayer.getDuration();
     const cur = ytPlayer.getCurrentTime();
-    if (dur > 0) els.progressFill.style.width = (cur / dur * 100) + '%';
+    if (dur > 0){
+      const pct = (cur / dur * 100);
+      els.progressFill.style.width = pct + '%';
+      if (!npDragging){
+        els.npProgressFill.style.width = pct + '%';
+        els.npProgressThumb.style.left = pct + '%';
+      }
+      els.npTimeCur.textContent = formatTime(cur);
+      els.npTimeDur.textContent = formatTime(dur);
+    }
   }, 400);
 }
 function stopProgressLoop(){
