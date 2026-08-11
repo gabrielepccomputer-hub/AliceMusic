@@ -107,6 +107,24 @@ button, input{ font-family:inherit; }
 }
 .search-clear.show{ opacity:1; transform:scale(1); }
 
+.type-filter{
+  display:flex; gap:8px; margin-bottom:12px;
+}
+.type-btn{
+  flex:1; border:none; cursor:pointer;
+  padding:9px 6px; border-radius:999px; font-size:12.5px; font-weight:700;
+  background: rgba(255,184,0,.06); color: var(--cream-dim);
+  border:1px solid rgba(255,184,0,.16);
+  transition: .2s; font-family:'Manrope';
+}
+.type-btn.active{
+  background: linear-gradient(135deg, var(--gold-deep), var(--gold));
+  color: var(--ink);
+  box-shadow: 0 4px 14px rgba(212,175,55,.3);
+  border-color: transparent;
+}
+.type-btn:active{ transform: scale(.96); }
+
 .tag-row{
   display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; margin-bottom:6px;
   scrollbar-width:none;
@@ -326,3 +344,93 @@ button, input{ font-family:inherit; }
 .toast.show{ opacity:1; transform: translateX(-50%) translateY(0); }
 
 #yt-player-host{ position:fixed; width:160px; height:90px; top:-1000px; left:-1000px; pointer-events:none; }
+
+/* ============================================
+   FULLSCREEN PLAYER
+   Si apre con doppio tap su un brano o toccando il mini player.
+   ============================================ */
+.fullscreen-player{
+  position:fixed; inset:0; z-index:50;
+  background: radial-gradient(circle at 50% -10%, #3a1109 0%, var(--ink) 55%, #090503 100%);
+  display:flex; align-items:center; justify-content:center;
+  opacity:0; pointer-events:none;
+  transform: translateY(100%);
+  transition: transform .4s cubic-bezier(.2,.9,.25,1), opacity .3s ease;
+}
+.fullscreen-player.show{
+  opacity:1; pointer-events:auto; transform: translateY(0);
+}
+
+.fs-inner{
+  width:100%; max-width:420px;
+  padding: max(20px, env(safe-area-inset-top)) 26px calc(30px + var(--safe-bottom));
+  display:flex; flex-direction:column; align-items:center;
+  gap:22px;
+}
+
+.fs-close{
+  position:absolute; top: max(16px, env(safe-area-inset-top)); right:18px;
+  width:38px; height:38px; border-radius:50%;
+  background: rgba(255,255,255,.06); border:1px solid rgba(255,184,0,.2);
+  color: var(--cream); display:flex; align-items:center; justify-content:center;
+}
+.fs-close:active{ background: rgba(255,255,255,.14); }
+
+.fs-cover-wrap{
+  width:100%; display:flex; justify-content:center; margin-top:44px;
+}
+.fs-cover{
+  width:min(72vw, 260px); height:min(72vw, 260px);
+  border-radius:50%; overflow:hidden; position:relative;
+  border: 3px solid var(--gold-deep);
+  box-shadow: 0 0 40px rgba(212,175,55,.35), 0 20px 40px rgba(0,0,0,.5);
+  animation: spin 7s linear infinite;
+  animation-play-state: paused;
+}
+.fs-cover.spin{ animation-play-state: running; }
+.fs-cover img{ width:100%; height:100%; object-fit:cover; display:block; }
+.fs-cover::after{
+  content:''; position:absolute; inset:0; margin:auto;
+  width:16px; height:16px; border-radius:50%;
+  background: var(--ink); border:2px solid var(--gold-pale);
+}
+
+.fs-meta{ text-align:center; width:100%; }
+.fs-title{
+  font-family:'Baloo 2'; font-size:20px; font-weight:800; color: var(--gold-pale);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.fs-artist{
+  font-size:14px; color: var(--cream-dim); margin-top:4px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+.fs-progress{
+  width:100%; height:5px; border-radius:99px; background: rgba(255,255,255,.08);
+  cursor:pointer; position:relative;
+}
+.fs-progress-fill{
+  height:100%; width:0%; border-radius:99px;
+  background: linear-gradient(90deg, var(--gold-deep), var(--gold));
+  transition: width .2s linear;
+}
+.fs-times{
+  width:100%; display:flex; justify-content:space-between;
+  font-size:11.5px; color: var(--cream-dim); margin-top:-10px;
+}
+
+.fs-controls{
+  display:flex; align-items:center; justify-content:center; gap:26px; margin-top:6px;
+}
+.fs-ctrl-btn{
+  border:none; background:none; color:var(--cream); opacity:.9;
+  width:48px; height:48px; display:flex; align-items:center; justify-content:center;
+  border-radius:50%; transition: transform .12s, background .12s;
+}
+.fs-ctrl-btn:active{ transform: scale(.85); background: rgba(255,255,255,.08); }
+.fs-ctrl-play{
+  width:64px; height:64px;
+  background: var(--gold); color: var(--ink); opacity:1;
+  box-shadow: 0 6px 20px rgba(212,175,55,.4);
+}
+.fs-ctrl-play:active{ background: var(--gold-deep); }
