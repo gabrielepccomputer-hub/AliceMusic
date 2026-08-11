@@ -1,5 +1,6 @@
 // ============================================
-// AliceMusic — app.js (Completo con Server Vercel - Innertube reale)
+// AliceMusic — app.js
+// Server reale (Innertube) + filtro tipo ricerca + player fullscreen
 // ============================================
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -7,6 +8,7 @@ document.addEventListener("DOMContentLoaded", () => {
     input: document.getElementById('searchInput'),
     clear: document.getElementById('clearBtn'),
     tags: document.getElementById('tagRow'),
+    typeFilter: document.getElementById('typeFilter'),
     state: document.getElementById('state'),
     results: document.getElementById('results'),
     infiniteLoader: document.getElementById('infiniteLoader'),
@@ -27,13 +29,27 @@ document.addEventListener("DOMContentLoaded", () => {
     historyState: document.getElementById('historyState'),
     historyResults: document.getElementById('historyResults'),
     clearHistBtn: document.getElementById('clearHistBtn'),
-    searchForm: document.getElementById('searchForm')
+    searchForm: document.getElementById('searchForm'),
+    // fullscreen player
+    fsPlayer: document.getElementById('fullscreenPlayer'),
+    fsClose: document.getElementById('fsCloseBtn'),
+    fsCover: document.getElementById('fsCover'),
+    fsTitle: document.getElementById('fsTitle'),
+    fsArtist: document.getElementById('fsArtist'),
+    fsProgressBar: document.getElementById('fsProgressBar'),
+    fsProgressFill: document.getElementById('fsProgressFill'),
+    fsTimeCurrent: document.getElementById('fsTimeCurrent'),
+    fsTimeDuration: document.getElementById('fsTimeDuration'),
+    fsPrevBtn: document.getElementById('fsPrevBtn'),
+    fsPlayBtn: document.getElementById('fsPlayBtn'),
+    fsNextBtn: document.getElementById('fsNextBtn'),
   };
 
   const HISTORY_KEY = 'aliceMusic_cronologia';
   const HISTORY_MAX = 60;
+  const DOUBLE_TAP_MS = 350;
 
-  // URL del server Vercel (Innertube reale, endpoint: /search?q=...)
+  // URL del server Vercel (Innertube reale, endpoint: /search?q=...&type=...)
   const SERVER_URL = 'https://server-music-alice-music.vercel.app';
 
   const MAGIC_CIRCLE_SVG = `
@@ -57,12 +73,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let currentList = [];
   let currentIndex = -1;
+  let currentPlayingId = null;
   let ytPlayer = null;
   let ytReady = false;
   let isPlaying = false;
   let progressTimer = null;
   let searchDebounce = null;
   let currentQuery = '';
+  let currentSearchType = 'song'; // 'song' | 'artist' | 'playlist'
+  let lastTapId = null;
+  let lastTapTime = 0;
 
   function showToast(msg, ms = 2200){
     if (!els.toast) return;
@@ -70,6 +90,13 @@ document.addEventListener("DOMContentLoaded", () => {
     els.toast.classList.add('show');
     clearTimeout(showToast._t);
     showToast._t = setTimeout(() => els.toast.classList.remove('show'), ms);
+  }
+
+  function formatTime(seconds){
+    if (!isFinite(seconds) || seconds < 0) return '0:00';
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
   }
 
   // ---------- GESTIONE CRONOLOGIA ----------
@@ -119,23 +146,11 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     if (els.clearHistBtn) els.clearHistBtn.hidden = false;
     els.historyState.style.display = 'none';
-    els.historyResults.innerHTML = hist.map((tr, i) => `
-      <div class="track hist-track" data-i="${i}" style="animation-delay:${i * 30}ms">
-        <div class="thumb-wrap">
-          <img src="${tr.thumb}" alt="" loading="lazy">
-          <div class="eq"><i></i><i></i><i></i></div>
-        </div>
-        <div class="track-info">
-          <div class="t">${escapeHtml(tr.title)}</div>
-          <div class="a">${escapeHtml(tr.artist)}</div>
-          <div class="hist-time">${timeAgo(tr.playedAt)}</div>
-        </div>
-      </div>
-    `).join('');
+    els.historyResults.innerHTML = hist.map((tr, i) => trackRowHtml(tr, i, true)).join('');
 
-    els.historyResults.querySelectorAll('.hist-track').forEach(row => {
+    els.historyResults.querySelectorAll('.track').forEach(row => {
       row.addEventListener('click', () => {
-        playFromList(getHistory(), parseInt(row.dataset.i, 10));
+        handleTrackTap(parseInt(row.dataset.i, 10), getHistory());
       });
     });
   }
@@ -156,14 +171,25 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast('Cronologia svuotata 📜');
   });
 
-  // ---------- NORMALIZZAZIONE RISULTATI INNERTUBE (yt.music.search) ----------
-  // La risposta di youtubei.js per yt.music.search() è un oggetto a "shelves":
-  // { results: [ { type: 'MusicShelf'|'Shelf', contents: [ {id/title/artists/thumbnail...} ] }, ... ] }
-  // A seconda della versione della libreria le proprietà possono chiamarsi in modo
-  // leggermente diverso, quindi qui si prova a coprire i casi più comuni in modo robusto.
+  // ---------- FILTRO TIPO DI RICERCA (canzoni / artisti / playlist) ----------
+  if (els.typeFilter) {
+    els.typeFilter.addEventListener('click', (e) => {
+      const btn = e.target.closest('.type-btn');
+      if (!btn) return;
+      currentSearchType = btn.dataset.type;
+      els.typeFilter.querySelectorAll('.type-btn').forEach(b => b.classList.toggle('active', b === btn));
+      const q = els.input ? els.input.value.trim() : '';
+      if (q) searchMusic(q);
+    });
+  }
 
-  function pickThumb(item){
-    // Prova diversi percorsi possibili per la thumbnail
+  // ---------- NORMALIZZAZIONE RISPOSTA SERVER ----------
+  // Il server ora restituisce già dati puliti: { query, type, count, tracks:[{id,title,artist,thumb,album,duration,kind}] }
+  // Manteniamo comunque un fallback "legacy" che sa leggere anche la vecchia
+  // risposta grezza (shelves di youtubei.js) o un semplice array, così l'app
+  // non si rompe se il server non è ancora aggiornato.
+
+  function pickThumbLegacy(item){
     const candidates = [
       item?.thumbnail?.contents,
       item?.thumbnail?.thumbnails,
@@ -171,19 +197,16 @@ document.addEventListener("DOMContentLoaded", () => {
       item?.thumbnails,
       item?.author?.thumbnails,
     ].filter(Boolean);
-
     for (const arr of candidates) {
       if (Array.isArray(arr) && arr.length) {
-        const best = arr[arr.length - 1]; // di solito l'ultima è la più grande
+        const best = arr[arr.length - 1];
         if (best?.url) return best.url;
       }
     }
-
     if (item?.id) return `https://i.ytimg.com/vi/${item.id}/mqdefault.jpg`;
     return '';
   }
-
-  function pickArtist(item){
+  function pickArtistLegacy(item){
     if (Array.isArray(item?.artists) && item.artists.length) {
       return item.artists.map(a => a?.name).filter(Boolean).join(', ');
     }
@@ -193,75 +216,61 @@ document.addEventListener("DOMContentLoaded", () => {
     if (typeof item?.author === 'string') return item.author;
     return 'Sconosciuto';
   }
-
-  function pickTitle(item){
+  function pickTitleLegacy(item){
     if (typeof item?.title === 'string') return item.title;
     if (item?.title?.text) return item.title.text;
     return 'Senza titolo';
   }
-
-  function pickId(item){
+  function pickIdLegacy(item){
     return item?.id || item?.video_id || item?.videoId || null;
   }
-
-  function isPlayableItem(item){
-    // Scarta shelf/header o elementi senza id video (es. album, artisti, playlist)
-    const t = (item?.type || item?.item_type || '').toString().toLowerCase();
-    if (t.includes('artist') || t.includes('album') || t.includes('playlist') || t.includes('shelf') || t.includes('header')) {
-      // Se comunque ha un id "video-like" lo teniamo, altrimenti scartiamo
-      return !!pickId(item) && t.includes('song');
-    }
-    return !!pickId(item);
-  }
-
-  function normalizeYouTubeMusicResults(data){
-    if (!data) return [];
-
-    // Caso: il server restituisce già un array semplice [{id,title,artist,thumb}, ...]
-    if (Array.isArray(data)) {
-      if (data.length && data[0] && (data[0].id || data[0].videoId) && (data[0].title !== undefined)) {
-        return data.map(tr => ({
-          id: pickId(tr) || tr.id,
-          title: pickTitle(tr),
-          artist: tr.artist || pickArtist(tr),
-          thumb: tr.thumb || pickThumb(tr)
-        })).filter(tr => tr.id);
-      }
-    }
-
-    // Caso: struttura Innertube con "results" (shelves)
-    const shelves = data.results || data.contents || (Array.isArray(data) ? data : []);
+  function normalizeLegacyShelfResults(data){
     const out = [];
-
+    const seen = new Set();
     const walk = (node) => {
       if (!node) return;
-      if (Array.isArray(node)) {
-        node.forEach(walk);
-        return;
-      }
+      if (Array.isArray(node)) { node.forEach(walk); return; }
       const contents = node.contents || node.items || null;
-      if (Array.isArray(contents)) {
-        contents.forEach(walk);
-      }
-      if (isPlayableItem(node) && pickId(node)) {
+      if (Array.isArray(contents)) contents.forEach(walk);
+      const id = pickIdLegacy(node);
+      if (id && !seen.has(id)) {
+        seen.add(id);
         out.push({
-          id: pickId(node),
-          title: pickTitle(node),
-          artist: pickArtist(node),
-          thumb: pickThumb(node)
+          id, title: pickTitleLegacy(node), artist: pickArtistLegacy(node),
+          thumb: pickThumbLegacy(node), album: null, duration: null, kind: 'song'
         });
       }
     };
+    walk(data?.results || data?.contents || data);
+    return out;
+  }
 
-    walk(shelves);
+  function normalizeSearchResponse(data){
+    if (!data) return [];
 
-    // Rimuove duplicati mantenendo l'ordine
-    const seen = new Set();
-    return out.filter(tr => {
-      if (!tr.id || seen.has(tr.id)) return false;
-      seen.add(tr.id);
-      return true;
-    });
+    // Formato nuovo (server potenziato)
+    if (Array.isArray(data.tracks)) {
+      return data.tracks.map(tr => ({
+        id: tr.id,
+        title: tr.title || 'Senza titolo',
+        artist: tr.artist || 'Sconosciuto',
+        thumb: tr.thumb || (tr.id ? `https://i.ytimg.com/vi/${tr.id}/mqdefault.jpg` : ''),
+        album: tr.album || null,
+        duration: tr.duration || null,
+        kind: tr.kind || 'song'
+      }));
+    }
+
+    // Array semplice già pronto
+    if (Array.isArray(data) && data.length && data[0]?.id !== undefined) {
+      return data.map(tr => ({
+        id: tr.id, title: tr.title || 'Senza titolo', artist: tr.artist || 'Sconosciuto',
+        thumb: tr.thumb || '', album: tr.album || null, duration: tr.duration || null, kind: tr.kind || 'song'
+      }));
+    }
+
+    // Fallback: risposta grezza vecchio server
+    return normalizeLegacyShelfResults(data);
   }
 
   // ---------- MOTORE DI RICERCA TRAMITE SERVER VERCEL (Innertube reale) ----------
@@ -270,17 +279,20 @@ document.addEventListener("DOMContentLoaded", () => {
     showLoading();
 
     try {
-      const res = await fetch(`${SERVER_URL}/search?q=${encodeURIComponent(query)}`);
+      const typeParam = currentSearchType && currentSearchType !== 'all'
+        ? `&type=${encodeURIComponent(currentSearchType)}`
+        : '';
+      const res = await fetch(`${SERVER_URL}/search?q=${encodeURIComponent(query)}${typeParam}`);
       if (!res.ok) throw new Error('Errore di connessione al server');
 
       const data = await res.json();
-      const tracks = normalizeYouTubeMusicResults(data);
+      const tracks = normalizeSearchResponse(data);
 
-      if (query !== currentQuery) return; // una ricerca più recente ha già sostituito questa
+      if (query !== currentQuery) return; // una ricerca più recente ha già preso il posto di questa
 
       if (!tracks.length) {
         showEmptyState();
-        showToast("Nessun risultato trovato 🔍");
+        showToast('Nessun risultato trovato 🔍');
         return;
       }
 
@@ -289,7 +301,7 @@ document.addEventListener("DOMContentLoaded", () => {
     } catch (e) {
       console.error(e);
       showEmptyState();
-      showToast("Il server non risponde, riprova tra poco 🐇");
+      showToast('Il server non risponde, riprova tra poco 🐇');
     }
   }
 
@@ -322,24 +334,42 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function renderResults(){
-    if (!els.results || !els.state) return;
-    els.state.style.display = 'none';
-    els.results.innerHTML = currentList.map((tr, i) => `
-      <div class="track" data-i="${i}" style="animation-delay:${(i % 12) * 20}ms">
+  // Icona diversa a seconda che il risultato sia riproducibile (canzone/video)
+  // o "di navigazione" (artista/playlist/album, che rilancia una ricerca mirata)
+  function trackActionIcon(tr){
+    if (tr.kind === 'artist' || tr.kind === 'playlist' || tr.kind === 'album') {
+      return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`;
+    }
+    return `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
+  }
+
+  function trackRowHtml(tr, i, isHistory){
+    const durationBadge = tr.duration ? `<span class="hist-time" style="margin-top:0;">${escapeHtml(tr.duration)}</span>` : '';
+    const subtitle = isHistory
+      ? `<div class="a">${escapeHtml(tr.artist)}</div><div class="hist-time">${timeAgo(tr.playedAt)}</div>`
+      : `<div class="a">${escapeHtml(tr.artist)}${tr.album ? ' · ' + escapeHtml(tr.album) : ''}</div>`;
+    return `
+      <div class="track${isHistory ? ' hist-track' : ''}" data-i="${i}" style="animation-delay:${(i % 12) * 20}ms">
         <div class="thumb-wrap">
           <img src="${tr.thumb}" alt="" loading="lazy">
           <div class="eq"><i></i><i></i><i></i></div>
         </div>
         <div class="track-info">
           <div class="t">${escapeHtml(tr.title)}</div>
-          <div class="a">${escapeHtml(tr.artist)}</div>
+          ${subtitle}
         </div>
-        <button class="track-play" data-i="${i}" aria-label="Riproduci">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        ${!isHistory && tr.duration ? `<span class="hist-time" style="margin-top:0;">${escapeHtml(tr.duration)}</span>` : ''}
+        <button class="track-play" data-i="${i}" aria-label="Azione">
+          ${trackActionIcon(tr)}
         </button>
       </div>
-    `).join('');
+    `;
+  }
+
+  function renderResults(){
+    if (!els.results || !els.state) return;
+    els.state.style.display = 'none';
+    els.results.innerHTML = currentList.map((tr, i) => trackRowHtml(tr, i, false)).join('');
     markPlayingRow();
   }
 
@@ -389,8 +419,43 @@ document.addEventListener("DOMContentLoaded", () => {
     els.results.addEventListener('click', (e) => {
       const row = e.target.closest('.track');
       if (!row) return;
-      playTrack(parseInt(row.dataset.i, 10));
+      handleTrackTap(parseInt(row.dataset.i, 10), currentList);
     });
+  }
+
+  // ---------- GESTIONE TAP / DOPPIO TAP SUI BRANI ----------
+  // Singolo click: riproduce (comportamento di sempre).
+  // Doppio click/tap ravvicinato sullo stesso brano: apre il player fullscreen.
+  // Se il risultato è un artista/playlist/album (non riproducibile come video),
+  // rilancia invece una ricerca mirata sui suoi brani.
+  function handleTrackTap(i, list){
+    const tr = list[i];
+    if (!tr) return;
+
+    if (tr.kind === 'artist' || tr.kind === 'playlist' || tr.kind === 'album') {
+      if (els.input) els.input.value = tr.title;
+      currentSearchType = 'song';
+      if (els.typeFilter) {
+        els.typeFilter.querySelectorAll('.type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === 'song'));
+      }
+      showToast(`Cerco brani di "${tr.title}" 🔍`);
+      searchMusic(tr.title);
+      return;
+    }
+
+    const now = Date.now();
+    const isDouble = lastTapId === tr.id && (now - lastTapTime) < DOUBLE_TAP_MS;
+
+    playFromList(list, i);
+
+    if (isDouble) {
+      openFullscreenPlayer();
+      lastTapId = null;
+      lastTapTime = 0;
+    } else {
+      lastTapId = tr.id;
+      lastTapTime = now;
+    }
   }
 
   // ---------- YOUTUBE IFRAME API ----------
@@ -429,9 +494,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function playFromList(list, i){
     if (i < 0 || i >= list.length) return;
+    const tr = list[i];
+    if (!tr || tr.kind === 'artist' || tr.kind === 'playlist' || tr.kind === 'album') return;
+
+    const sameTrack = tr.id === currentPlayingId && currentIndex === i && currentList === list;
     currentList = list;
     currentIndex = i;
-    const tr = currentList[i];
 
     if (!ytReady || !ytPlayer){
       showToast('Inizializzazione lettore...');
@@ -439,12 +507,19 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    ytPlayer.loadVideoById(tr.id);
+    if (!sameTrack) {
+      ytPlayer.loadVideoById(tr.id);
+      currentPlayingId = tr.id;
+    }
     ytPlayer.playVideo();
+
     if (els.playerTitle) els.playerTitle.textContent = tr.title;
     if (els.playerArtist) els.playerArtist.textContent = tr.artist;
     const vinylImg = els.vinyl ? els.vinyl.querySelector('img') : null;
     if (vinylImg) vinylImg.src = tr.thumb;
+
+    updateFullscreenMeta(tr);
+
     if (els.player) els.player.classList.add('show');
     markPlayingRow();
     saveToHistory(tr);
@@ -459,20 +534,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function updatePlayUI(){
     if (els.vinyl) els.vinyl.classList.toggle('spin', isPlaying);
+    if (els.fsCover) els.fsCover.classList.toggle('spin', isPlaying);
+    const playIconPath = isPlaying
+      ? '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>'
+      : '<path d="M8 5v14l11-7z"/>';
     if (els.playBtn) {
-      els.playBtn.innerHTML = isPlaying
-        ? '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>'
-        : '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+      els.playBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">${playIconPath}</svg>`;
+    }
+    if (els.fsPlayBtn) {
+      els.fsPlayBtn.innerHTML = `<svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor">${playIconPath}</svg>`;
     }
     markPlayingRow();
   }
 
-  if (els.playBtn) {
-    els.playBtn.addEventListener('click', () => {
-      if (!ytPlayer || currentIndex === -1) return;
-      if (isPlaying) ytPlayer.pauseVideo(); else ytPlayer.playVideo();
-    });
+  function togglePlayPause(){
+    if (!ytPlayer || currentIndex === -1) return;
+    if (isPlaying) ytPlayer.pauseVideo(); else ytPlayer.playVideo();
   }
+  if (els.playBtn) els.playBtn.addEventListener('click', togglePlayPause);
+  if (els.fsPlayBtn) els.fsPlayBtn.addEventListener('click', togglePlayPause);
 
   function playNext(){
     if (!currentList.length) return;
@@ -484,6 +564,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   if (els.nextBtn) els.nextBtn.addEventListener('click', playNext);
   if (els.prevBtn) els.prevBtn.addEventListener('click', playPrev);
+  if (els.fsNextBtn) els.fsNextBtn.addEventListener('click', playNext);
+  if (els.fsPrevBtn) els.fsPrevBtn.addEventListener('click', playPrev);
 
   function startProgressLoop(){
     stopProgressLoop();
@@ -491,16 +573,50 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!ytPlayer || !ytPlayer.getDuration) return;
       const dur = ytPlayer.getDuration();
       const cur = ytPlayer.getCurrentTime();
-      if (dur > 0 && els.progressFill) els.progressFill.style.width = (cur / dur * 100) + '%';
+      if (dur > 0) {
+        const pct = (cur / dur * 100) + '%';
+        if (els.progressFill) els.progressFill.style.width = pct;
+        if (els.fsProgressFill) els.fsProgressFill.style.width = pct;
+        if (els.fsTimeCurrent) els.fsTimeCurrent.textContent = formatTime(cur);
+        if (els.fsTimeDuration) els.fsTimeDuration.textContent = formatTime(dur);
+      }
     }, 400);
   }
   function stopProgressLoop(){ clearInterval(progressTimer); }
 
-  if (els.progressBar) {
-    els.progressBar.addEventListener('click', (e) => {
-      if (!ytPlayer || !ytPlayer.getDuration) return;
-      const rect = els.progressBar.getBoundingClientRect();
-      ytPlayer.seekTo(ytPlayer.getDuration() * ((e.clientX - rect.left) / rect.width), true);
+  function seekFromBar(bar, e){
+    if (!ytPlayer || !ytPlayer.getDuration) return;
+    const rect = bar.getBoundingClientRect();
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    ytPlayer.seekTo(ytPlayer.getDuration() * ratio, true);
+  }
+  if (els.progressBar) els.progressBar.addEventListener('click', (e) => seekFromBar(els.progressBar, e));
+  if (els.fsProgressBar) els.fsProgressBar.addEventListener('click', (e) => seekFromBar(els.fsProgressBar, e));
+
+  // ---------- PLAYER FULLSCREEN ----------
+  function updateFullscreenMeta(tr){
+    if (els.fsTitle) els.fsTitle.textContent = tr.title;
+    if (els.fsArtist) els.fsArtist.textContent = tr.artist;
+    const img = els.fsCover ? els.fsCover.querySelector('img') : null;
+    if (img) img.src = tr.thumb;
+  }
+
+  function openFullscreenPlayer(){
+    if (!els.fsPlayer || currentIndex === -1) return;
+    els.fsPlayer.classList.add('show');
+  }
+  function closeFullscreenPlayer(){
+    if (!els.fsPlayer) return;
+    els.fsPlayer.classList.remove('show');
+  }
+  if (els.fsClose) els.fsClose.addEventListener('click', closeFullscreenPlayer);
+
+  // Toccare il mini player (fuori dai controlli) apre il fullscreen
+  if (els.player) {
+    els.player.addEventListener('click', (e) => {
+      if (e.target.closest('.controls') || e.target.closest('.progress')) return;
+      openFullscreenPlayer();
     });
   }
 
