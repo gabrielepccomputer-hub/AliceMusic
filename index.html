@@ -1,140 +1,116 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#120b08">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="AliceMusic">
-<link rel="manifest" href="manifest.json">
-<link rel="icon" href="icon-512.png">
-<link rel="apple-touch-icon" href="icon-192.png">
-<title>AliceMusic</title>
-<link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AliceMusic</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div class="dust" id="dust"></div>
-<div class="app">
-<header class="header">
-<div class="watch" aria-hidden="true"></div>
-<div class="brand">
-<h1>AliceMusic</h1>
-<span>per Alice ✨ edizione Grifondoro</span>
-</div>
-</header>
+  <div id="searchView" class="view">
+    <div class="top-bar">
+      <h1>AliceMusic</h1>
+      <button id="tabHistoryBtn" class="tab-btn">Cronologia 📜</button>
+    </div>
 
-<div class="tabbar">
-<button class="tabbtn active" id="tabSearchBtn" type="button">🔍 Cerca</button>
-<button class="tabbtn" id="tabHistoryBtn" type="button">📜 Cronologia</button>
-</div>
+    <form id="searchForm" class="search-box">
+      <div class="search-input-wrapper">
+        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="searchInput" placeholder="Cerca brani, artisti, playlist..." autocomplete="off">
+        <button type="button" id="clearBtn" class="clear-btn" aria-label="Cancella">✕</button>
+      </div>
+    </form>
 
-<section id="searchView">
-<form class="search-wrap" id="searchForm" autocomplete="off" onsubmit="return false;">
-<div class="search-bottle">
-<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-</svg>
-<input id="searchInput" type="search" inputmode="search" placeholder="Cerca canzoni, artisti, album…" />
-<button type="button" class="search-clear" id="clearBtn" aria-label="Cancella">✕</button>
-</div>
-</form>
+    <div id="typeFilter" class="type-filter">
+      <button class="type-btn active" data-type="song">Brani</button>
+      <button class="type-btn" data-type="artist">Artisti</button>
+      <button class="type-btn" data-type="playlist">Playlist</button>
+      <button class="type-btn" data-type="album">Album</button>
+    </div>
 
-<div class="type-filter" id="typeFilter">
-<button class="type-btn active" data-type="song" type="button">🎵 Canzoni</button>
-<button class="type-btn" data-type="artist" type="button">🎤 Artisti</button>
-<button class="type-btn" data-type="playlist" type="button">📀 Playlist</button>
-</div>
+    <div class="tags" id="tagRow">
+      <button class="tag" data-q="Lofi">Lofi</button>
+      <button class="tag" data-q="Hit italiane">Hit italiane</button>
+      <button class="tag" data-q="Pop">Pop</button>
+      <button class="tag" data-q="Rap ITA">Rap ITA</button>
+      <button class="tag" data-q="Relax">Relax</button>
+      <button class="tag" data-q="Anni 2000">Anni 2000</button>
+    </div>
 
-<div class="tag-row" id="tagRow">
-<div class="tag" data-q="lofi study">Lofi</div>
-<div class="tag" data-q="hit del momento italiane">Hit italiane</div>
-<div class="tag" data-q="pop internazionale">Pop</div>
-<div class="tag" data-q="rap italiano">Rap ITA</div>
-<div class="tag" data-q="musica rilassante">Relax</div>
-<div class="tag" data-q="anni 2000 hit">Anni 2000</div>
-</div>
+    <div id="state" class="state-container"></div>
+    <div id="results" class="results-list"></div>
+  </div>
 
-<div class="state" id="state"></div>
-<div class="results" id="results"></div>
-<div id="infiniteLoader" style="display: none; text-align: center; padding: 20px; color: var(--gold-pale); font-size: 13px;">Caricamento magico di altri brani... ✨</div>
-</section>
+  <div id="historyView" class="view" hidden>
+    <div class="top-bar">
+      <h1>Cronologia</h1>
+      <button id="tabSearchBtn" class="tab-btn active">Cerca 🔍</button>
+    </div>
+    <div style="padding: 10px 16px; display: flex; justify-content: flex-end;">
+      <button id="clearHistBtn" class="clear-hist-btn" hidden>Svuota cronologia</button>
+    </div>
+    <div id="historyState" class="state-container"></div>
+    <div id="historyResults" class="results-list"></div>
+  </div>
 
-<section id="historyView" hidden>
-<div class="state" id="historyState"></div>
-<div class="results" id="historyResults"></div>
-<button class="clear-hist" id="clearHistBtn" type="button" hidden>🗑️ Svuota cronologia</button>
-</section>
-</div>
+  <!-- Mini Player in basso -->
+  <div id="player" class="player-bar">
+    <div id="vinyl" class="vinyl">
+      <img src="" alt="Cover">
+    </div>
+    <div class="meta">
+      <div id="playerTitle" class="title">Titolo</div>
+      <div id="playerArtist" class="artist">Artista</div>
+    </div>
+    <div class="controls">
+      <button id="prevBtn" aria-label="Precedente">⏮</button>
+      <button id="playBtn" aria-label="Play/Pause">▶</button>
+      <button id="nextBtn" aria-label="Successivo">⏭</button>
+    </div>
+    <div id="progressBar" class="progress">
+      <div id="progressFill" class="progress-fill"></div>
+    </div>
+  </div>
 
-<!-- mini player -->
-<div class="player" id="player">
-<div class="player-inner">
-<div class="progress" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
-<div class="player-row">
-<div class="vinyl" id="vinyl"><img src="" alt=""></div>
-<div class="player-meta">
-<div class="t" id="playerTitle">—</div>
-<div class="a" id="playerArtist">—</div>
-</div>
-<div class="controls">
-<button class="ctrl-btn" id="prevBtn" aria-label="Precedente">
-<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zM20 6v12l-8.5-6z"/></svg>
-</button>
-<button class="ctrl-btn ctrl-play" id="playBtn" aria-label="Play/Pausa">
-<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-</button>
-<button class="ctrl-btn" id="nextBtn" aria-label="Successivo">
-<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM4 6v12l8.5-6z"/></svg>
-</button>
-</div>
-</div>
-</div>
-</div>
+  <!-- Player Fullscreen per la riproduzione -->
+  <div id="fullscreenPlayer" class="fullscreen-player">
+    <button id="fsCloseBtn" class="fs-close">↓</button>
+    <div id="fsCover" class="fs-vinyl spin">
+      <img src="" alt="Cover">
+    </div>
+    <div class="fs-meta">
+      <div id="fsTitle" class="fs-title">Titolo</div>
+      <div id="fsArtist" class="fs-artist">Artista</div>
+    </div>
+    <div id="fsProgressBar" class="progress fs-progress">
+      <div id="fsProgressFill" class="progress-fill"></div>
+    </div>
+    <div class="fs-times">
+      <span id="fsTimeCurrent">0:00</span>
+      <span id="fsTimeDuration">0:00</span>
+    </div>
+    <div class="fs-controls">
+      <button id="fsPrevBtn" aria-label="Precedente">⏮</button>
+      <button id="fsPlayBtn" aria-label="Play/Pause">▶</button>
+      <button id="fsNextBtn" aria-label="Successivo">⏭</button>
+    </div>
+  </div>
 
-<!-- fullscreen player: si apre con doppio tap/click su un brano, o toccando il mini player -->
-<div class="fullscreen-player" id="fullscreenPlayer">
-<div class="fs-inner">
-<button class="fs-close" id="fsCloseBtn" type="button" aria-label="Chiudi">
-<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-</button>
+  <!-- Schermata Fullscreen Artista (Aggiunta per gestire gli artisti) -->
+  <div id="artistModal" class="fullscreen-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-main, #121212); z-index:9999; overflow-y:auto; padding:20px; box-sizing:border-box;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <button id="closeArtistModal" style="background:none; border:none; color:var(--text-main, #fff); font-size:18px; cursor:pointer;">← Indietro</button>
+      <h2 id="artistModalName" style="color:var(--gold, #d4af37); margin:0; font-size:20px;">Artista</h2>
+      <div style="width:50px;"></div>
+    </div>
+    <div id="artistModalContent" style="display:flex; flex-direction:column; gap:10px;"></div>
+  </div>
 
-<div class="fs-cover-wrap">
-<div class="fs-cover" id="fsCover"><img src="" alt=""></div>
-</div>
+  <div id="toast" class="toast"></div>
 
-<div class="fs-meta">
-<div class="fs-title" id="fsTitle">—</div>
-<div class="fs-artist" id="fsArtist">—</div>
-</div>
-
-<div class="fs-progress" id="fsProgressBar"><div class="fs-progress-fill" id="fsProgressFill"></div></div>
-<div class="fs-times">
-<span id="fsTimeCurrent">0:00</span>
-<span id="fsTimeDuration">0:00</span>
-</div>
-
-<div class="fs-controls">
-<button class="fs-ctrl-btn" id="fsPrevBtn" type="button" aria-label="Precedente">
-<svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zM20 6v12l-8.5-6z"/></svg>
-</button>
-<button class="fs-ctrl-btn fs-ctrl-play" id="fsPlayBtn" type="button" aria-label="Play/Pausa">
-<svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-</button>
-<button class="fs-ctrl-btn" id="fsNextBtn" type="button" aria-label="Successivo">
-<svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM4 6v12l8.5-6z"/></svg>
-</button>
-</div>
-</div>
-</div>
-
-<div class="toast" id="toast"></div>
-
-<!-- player YouTube nascosto (audio) -->
-<div id="yt-player-host"></div>
-
-<script src="https://www.youtube.com/iframe_api"></script>
-<script src="app.js"></script>
+  <!-- Host invisibile per YouTube IFrame API -->
+  <div style="display:none;"><div id="yt-player-host"></div></div>
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <script src="app.js"></script>
 </body>
 </html>
