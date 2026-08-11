@@ -1,5 +1,5 @@
 // ============================================
-// AliceMusic — app.js
+// AliceMusic — app.js (Versione Mobile-Friendly)
 // Server reale (Innertube) + Gestione Playlist e Artisti Fullscreen
 // ============================================
 
@@ -43,11 +43,12 @@ document.addEventListener("DOMContentLoaded", () => {
     fsPrevBtn: document.getElementById('fsPrevBtn'),
     fsPlayBtn: document.getElementById('fsPlayBtn'),
     fsNextBtn: document.getElementById('fsNextBtn'),
+    ytHost: document.getElementById('yt-player-host')
   };
 
   const HISTORY_KEY = 'aliceMusic_cronologia';
   const HISTORY_MAX = 60;
-  const DOUBLE_TAP_MS = 350;
+  const DOUBLE_TAP_MS = 300;
 
   const SERVER_URL = 'https://server-music-alice-music.vercel.app';
 
@@ -82,6 +83,16 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentSearchType = 'song';
   let lastTapId = null;
   let lastTapTime = 0;
+  let tapTimeout = null;
+  let hasInteracted = false; // Aiuta con le policy di autoplay
+
+  // Marca che l'utente ha interagito (fondamentale per Android Autoplay)
+  document.body.addEventListener('click', () => {
+    hasInteracted = true;
+    if (ytPlayer && ytPlayer.isMuted && ytPlayer.isMuted()) {
+      ytPlayer.unMute();
+    }
+  }, { once: true });
 
   function showToast(msg, ms = 2200){
     if (!els.toast) return;
@@ -269,7 +280,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ? `<div class="a">${escapeHtml(tr.artist)}</div><div class="hist-time">${timeAgo(tr.playedAt)}</div>`
       : `<div class="a">${escapeHtml(tr.artist)}${tr.album ? ' · ' + escapeHtml(tr.album) : ''}</div>`;
     return `
-      <div class="track${isHistory ? ' hist-track' : ''}" data-i="${i}" style="animation-delay:${(i % 12) * 20}ms">
+      <div class="track${isHistory ? ' hist-track' : ''}" data-i="${i}" style="animation-delay:${(i % 12) * 20}ms; touch-action: manipulation;">
         <div class="thumb-wrap">
           <img src="${tr.thumb}" alt="" loading="lazy">
           <div class="eq"><i></i><i></i><i></i></div>
@@ -370,18 +381,23 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    // Gestione Doppio Tap ottimizzata per Mobile
     const now = Date.now();
     const isDouble = lastTapId === tr.id && (now - lastTapTime) < DOUBLE_TAP_MS;
 
-    playFromList(list, i);
-
     if (isDouble) {
+      clearTimeout(tapTimeout); // Ferma il singolo tap in corso
+      playFromList(list, i);
       openFullscreenPlayer();
       lastTapId = null;
       lastTapTime = 0;
     } else {
       lastTapId = tr.id;
       lastTapTime = now;
+      // Aspetta per vedere se arriva un doppio tap
+      tapTimeout = setTimeout(() => {
+        playFromList(list, i);
+      }, DOUBLE_TAP_MS);
     }
   }
 
@@ -425,13 +441,22 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // --- YOUTUBE API & PLAYER ---
   window.onYouTubeIframeAPIReady = function(){
     try {
       ytPlayer = new YT.Player('yt-player-host', {
-        height: '90', width: '160',
-        playerVars: { playsinline: 1, controls: 0, disablekb: 1, rel: 0 },
+        height: '1', // Minimizzato per mobile
+        width: '1',
+        playerVars: { 
+          playsinline: 1, // Fondamentale per non aprire a schermo intero su iOS/Android
+          controls: 0, 
+          disablekb: 1, 
+          rel: 0 
+        },
         events: {
-          onReady: () => { ytReady = true; },
+          onReady: (e) => { 
+            ytReady = true; 
+          },
           onStateChange: onPlayerStateChange,
           onError: onPlayerError,
         }
@@ -441,11 +466,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function onPlayerStateChange(e){
     if (e.data === YT.PlayerState.PLAYING){
-      isPlaying = true; updatePlayUI(); startProgressLoop();
+      isPlaying = true; 
+      updatePlayUI(); 
+      startProgressLoop();
+      
+      // Su alcuni browser Android, l'autoplay parte in muto. Smutiamo se possibile.
+      if (ytPlayer.isMuted && ytPlayer.isMuted() && hasInteracted) {
+        ytPlayer.unMute();
+      }
     } else if (e.data === YT.PlayerState.PAUSED){
-      isPlaying = false; updatePlayUI(); stopProgressLoop();
+      isPlaying = false; 
+      updatePlayUI(); 
+      stopProgressLoop();
     } else if (e.data === YT.PlayerState.ENDED){
       playNext();
+    } else if (e.data === YT.PlayerState.BUFFERING) {
+      // Utile per aggiornare la UI se necessario
     }
   }
 
@@ -474,9 +510,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (!sameTrack) {
-      ytPlayer.loadVideoById(tr.id);
       currentPlayingId = tr.id;
+      // IMPORTANTE PER ANDROID: cueVideoById rispetta le policy mobile meglio di load
+      ytPlayer.cueVideoById(tr.id);
     }
+    
+    // Riproduci (se l'utente ha interagito col body, partirà l'audio)
     ytPlayer.playVideo();
 
     if (els.playerTitle) els.playerTitle.textContent = tr.title;
@@ -517,8 +556,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!ytPlayer || currentIndex === -1) return;
     if (isPlaying) ytPlayer.pauseVideo(); else ytPlayer.playVideo();
   }
-  if (els.playBtn) els.playBtn.addEventListener('click', togglePlayPause);
-  if (els.fsPlayBtn) els.fsPlayBtn.addEventListener('click', togglePlayPause);
+  if (els.playBtn) els.playBtn.addEventListener('click', (e) => { e.stopPropagation(); togglePlayPause(); });
+  if (els.fsPlayBtn) els.fsPlayBtn.addEventListener('click', (e) => { e.stopPropagation(); togglePlayPause(); });
 
   function playNext(){
     if (!currentList.length) return;
@@ -528,10 +567,10 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!currentList.length) return;
     playTrack((currentIndex - 1 + currentList.length) % currentList.length);
   }
-  if (els.nextBtn) els.nextBtn.addEventListener('click', playNext);
-  if (els.prevBtn) els.prevBtn.addEventListener('click', playPrev);
-  if (els.fsNextBtn) els.fsNextBtn.addEventListener('click', playNext);
-  if (els.fsPrevBtn) els.fsPrevBtn.addEventListener('click', playPrev);
+  if (els.nextBtn) els.nextBtn.addEventListener('click', (e) => { e.stopPropagation(); playNext(); });
+  if (els.prevBtn) els.prevBtn.addEventListener('click', (e) => { e.stopPropagation(); playPrev(); });
+  if (els.fsNextBtn) els.fsNextBtn.addEventListener('click', (e) => { e.stopPropagation(); playNext(); });
+  if (els.fsPrevBtn) els.fsPrevBtn.addEventListener('click', (e) => { e.stopPropagation(); playPrev(); });
 
   function startProgressLoop(){
     stopProgressLoop();
@@ -557,8 +596,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
     ytPlayer.seekTo(ytPlayer.getDuration() * ratio, true);
   }
-  if (els.progressBar) els.progressBar.addEventListener('click', (e) => seekFromBar(els.progressBar, e));
-  if (els.fsProgressBar) els.fsProgressBar.addEventListener('click', (e) => seekFromBar(els.fsProgressBar, e));
+  if (els.progressBar) els.progressBar.addEventListener('click', (e) => { e.stopPropagation(); seekFromBar(els.progressBar, e); });
+  if (els.fsProgressBar) els.fsProgressBar.addEventListener('click', (e) => { e.stopPropagation(); seekFromBar(els.fsProgressBar, e); });
 
   function updateFullscreenMeta(tr){
     if (els.fsTitle) els.fsTitle.textContent = tr.title;
@@ -575,10 +614,11 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!els.fsPlayer) return;
     els.fsPlayer.classList.remove('show');
   }
-  if (els.fsClose) els.fsClose.addEventListener('click', closeFullscreenPlayer);
+  if (els.fsClose) els.fsClose.addEventListener('click', (e) => { e.stopPropagation(); closeFullscreenPlayer(); });
 
   if (els.player) {
     els.player.addEventListener('click', (e) => {
+      // Apre il fullscreen solo se si clicca sul player ma NON sui controlli
       if (e.target.closest('.controls') || e.target.closest('.progress')) return;
       openFullscreenPlayer();
     });
