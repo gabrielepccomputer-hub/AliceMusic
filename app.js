@@ -1,6 +1,5 @@
 // ============================================
-// AliceMusic — app.js (Versione Mobile-Friendly)
-// Server reale (Innertube) + Gestione Playlist e Artisti Fullscreen
+// AliceMusic — app.js (Versione Mobile Definitiva)
 // ============================================
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -30,7 +29,6 @@ document.addEventListener("DOMContentLoaded", () => {
     historyResults: document.getElementById('historyResults'),
     clearHistBtn: document.getElementById('clearHistBtn'),
     searchForm: document.getElementById('searchForm'),
-    // fullscreen player
     fsPlayer: document.getElementById('fullscreenPlayer'),
     fsClose: document.getElementById('fsCloseBtn'),
     fsCover: document.getElementById('fsCover'),
@@ -49,7 +47,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const HISTORY_KEY = 'aliceMusic_cronologia';
   const HISTORY_MAX = 60;
   const DOUBLE_TAP_MS = 300;
-
   const SERVER_URL = 'https://server-music-alice-music.vercel.app';
 
   const MAGIC_CIRCLE_SVG = `
@@ -84,9 +81,9 @@ document.addEventListener("DOMContentLoaded", () => {
   let lastTapId = null;
   let lastTapTime = 0;
   let tapTimeout = null;
-  let hasInteracted = false; // Aiuta con le policy di autoplay
+  let hasInteracted = false;
 
-  // Marca che l'utente ha interagito (fondamentale per Android Autoplay)
+  // Sblocca l'audio sui browser mobile al primo tocco
   document.body.addEventListener('click', () => {
     hasInteracted = true;
     if (ytPlayer && ytPlayer.isMuted && ytPlayer.isMuted()) {
@@ -381,12 +378,11 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    // Gestione Doppio Tap ottimizzata per Mobile
     const now = Date.now();
     const isDouble = lastTapId === tr.id && (now - lastTapTime) < DOUBLE_TAP_MS;
 
     if (isDouble) {
-      clearTimeout(tapTimeout); // Ferma il singolo tap in corso
+      clearTimeout(tapTimeout);
       playFromList(list, i);
       openFullscreenPlayer();
       lastTapId = null;
@@ -394,7 +390,6 @@ document.addEventListener("DOMContentLoaded", () => {
     } else {
       lastTapId = tr.id;
       lastTapTime = now;
-      // Aspetta per vedere se arriva un doppio tap
       tapTimeout = setTimeout(() => {
         playFromList(list, i);
       }, DOUBLE_TAP_MS);
@@ -441,22 +436,14 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // --- YOUTUBE API & PLAYER ---
   window.onYouTubeIframeAPIReady = function(){
     try {
       ytPlayer = new YT.Player('yt-player-host', {
-        height: '1', // Minimizzato per mobile
+        height: '1',
         width: '1',
-        playerVars: { 
-          playsinline: 1, // Fondamentale per non aprire a schermo intero su iOS/Android
-          controls: 0, 
-          disablekb: 1, 
-          rel: 0 
-        },
+        playerVars: { playsinline: 1, controls: 0, disablekb: 1, rel: 0 },
         events: {
-          onReady: (e) => { 
-            ytReady = true; 
-          },
+          onReady: () => { ytReady = true; },
           onStateChange: onPlayerStateChange,
           onError: onPlayerError,
         }
@@ -469,8 +456,6 @@ document.addEventListener("DOMContentLoaded", () => {
       isPlaying = true; 
       updatePlayUI(); 
       startProgressLoop();
-      
-      // Su alcuni browser Android, l'autoplay parte in muto. Smutiamo se possibile.
       if (ytPlayer.isMuted && ytPlayer.isMuted() && hasInteracted) {
         ytPlayer.unMute();
       }
@@ -480,13 +465,14 @@ document.addEventListener("DOMContentLoaded", () => {
       stopProgressLoop();
     } else if (e.data === YT.PlayerState.ENDED){
       playNext();
-    } else if (e.data === YT.PlayerState.BUFFERING) {
-      // Utile per aggiornare la UI se necessario
     }
   }
 
-  function onPlayerError(){
-    showToast('Brano non riproducibile, salto al prossimo 🐇');
+  function onPlayerError(e){
+    const msg = (e.data === 101 || e.data === 150) 
+      ? 'Questo brano ha restrizioni di copyright, salto al prossimo ⏭️'
+      : 'Brano non riproducibile, salto al prossimo 🐇';
+    showToast(msg);
     setTimeout(playNext, 700);
   }
 
@@ -511,11 +497,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (!sameTrack) {
       currentPlayingId = tr.id;
-      // IMPORTANTE PER ANDROID: cueVideoById rispetta le policy mobile meglio di load
       ytPlayer.cueVideoById(tr.id);
     }
-    
-    // Riproduci (se l'utente ha interagito col body, partirà l'audio)
     ytPlayer.playVideo();
 
     if (els.playerTitle) els.playerTitle.textContent = tr.title;
@@ -618,7 +601,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (els.player) {
     els.player.addEventListener('click', (e) => {
-      // Apre il fullscreen solo se si clicca sul player ma NON sui controlli
       if (e.target.closest('.controls') || e.target.closest('.progress')) return;
       openFullscreenPlayer();
     });
