@@ -2,7 +2,8 @@
 <html lang="it">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Aggiunto maximum-scale=1 e user-scalable=no per evitare lo zoom sul doppio tap in Android -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>AliceMusic</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -96,7 +97,7 @@
     </div>
   </div>
 
-  <!-- Schermata Fullscreen Artista (Aggiunta per gestire gli artisti) -->
+  <!-- Schermata Fullscreen Artista -->
   <div id="artistModal" class="fullscreen-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-main, #121212); z-index:9999; overflow-y:auto; padding:20px; box-sizing:border-box;">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
       <button id="closeArtistModal" style="background:none; border:none; color:var(--text-main, #fff); font-size:18px; cursor:pointer;">← Indietro</button>
@@ -108,8 +109,10 @@
 
   <div id="toast" class="toast"></div>
 
-  <!-- Host invisibile per YouTube IFrame API -->
-  <div style="display:none;"><div id="yt-player-host"></div></div>
+  <!-- CORREZIONE FONDAMENTALE: L'host di YouTube NON deve avere display:none, 
+       altrimenti l'API fallisce su Mobile. Va posizionato fuori dallo schermo. -->
+  <div id="yt-player-host" style="position: absolute; width: 1px; height: 1px; left: -9999px; top: -9999px; pointer-events: none;"></div>
+  
   <script src="https://www.youtube.com/iframe_api"></script>
   <script src="app.js"></script>
 </body>
