@@ -1,6 +1,6 @@
 // ============================================
 // AliceMusic — app.js
-// Server reale (Innertube) + filtro tipo ricerca + player fullscreen
+// Server reale (Innertube) + Gestione Playlist e Artisti Fullscreen
 // ============================================
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -49,7 +49,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const HISTORY_MAX = 60;
   const DOUBLE_TAP_MS = 350;
 
-  // URL del server Vercel (aggiornato con il prefisso /api/corretto)
   const SERVER_URL = 'https://server-music-alice-music.vercel.app';
 
   const MAGIC_CIRCLE_SVG = `
@@ -80,7 +79,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let progressTimer = null;
   let searchDebounce = null;
   let currentQuery = '';
-  let currentSearchType = 'song'; // 'song' | 'artist' | 'playlist'
+  let currentSearchType = 'song';
   let lastTapId = null;
   let lastTapTime = 0;
 
@@ -99,7 +98,6 @@ document.addEventListener("DOMContentLoaded", () => {
     return `${m}:${s}`;
   }
 
-  // ---------- GESTIONE CRONOLOGIA ----------
   function getHistory(){
     try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; } catch(e){ return []; }
   }
@@ -171,7 +169,6 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast('Cronologia svuotata 📜');
   });
 
-  // ---------- FILTRO TIPO DI RICERCA ----------
   if (els.typeFilter) {
     els.typeFilter.addEventListener('click', (e) => {
       const btn = e.target.closest('.type-btn');
@@ -181,62 +178,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const q = els.input ? els.input.value.trim() : '';
       if (q) searchMusic(q);
     });
-  }
-
-  function pickThumbLegacy(item){
-    const candidates = [
-      item?.thumbnail?.contents,
-      item?.thumbnail?.thumbnails,
-      Array.isArray(item?.thumbnail) ? item.thumbnail : null,
-      item?.thumbnails,
-      item?.author?.thumbnails,
-    ].filter(Boolean);
-    for (const arr of candidates) {
-      if (Array.isArray(arr) && arr.length) {
-        const best = arr[arr.length - 1];
-        if (best?.url) return best.url;
-      }
-    }
-    if (item?.id) return `https://i.ytimg.com/vi/${item.id}/mqdefault.jpg`;
-    return '';
-  }
-  function pickArtistLegacy(item){
-    if (Array.isArray(item?.artists) && item.artists.length) {
-      return item.artists.map(a => a?.name).filter(Boolean).join(', ');
-    }
-    if (item?.artist?.name) return item.artist.name;
-    if (typeof item?.artist === 'string') return item.artist;
-    if (item?.author?.name) return item.author.name;
-    if (typeof item?.author === 'string') return item.author;
-    return 'Sconosciuto';
-  }
-  function pickTitleLegacy(item){
-    if (typeof item?.title === 'string') return item.title;
-    if (item?.title?.text) return item.title.text;
-    return 'Senza titolo';
-  }
-  function pickIdLegacy(item){
-    return item?.id || item?.video_id || item?.videoId || null;
-  }
-  function normalizeLegacyShelfResults(data){
-    const out = [];
-    const seen = new Set();
-    const walk = (node) => {
-      if (!node) return;
-      if (Array.isArray(node)) { node.forEach(walk); return; }
-      const contents = node.contents || node.items || null;
-      if (Array.isArray(contents)) contents.forEach(walk);
-      const id = pickIdLegacy(node);
-      if (id && !seen.has(id)) {
-        seen.add(id);
-        out.push({
-          id, title: pickTitleLegacy(node), artist: pickArtistLegacy(node),
-          thumb: pickThumbLegacy(node), album: null, duration: null, kind: 'song'
-        });
-      }
-    };
-    walk(data?.results || data?.contents || data);
-    return out;
   }
 
   function normalizeSearchResponse(data){
@@ -252,16 +193,9 @@ document.addEventListener("DOMContentLoaded", () => {
         kind: tr.kind || 'song'
       }));
     }
-    if (Array.isArray(data) && data.length && data[0]?.id !== undefined) {
-      return data.map(tr => ({
-        id: tr.id, title: tr.title || 'Senza titolo', artist: tr.artist || 'Sconosciuto',
-        thumb: tr.thumb || '', album: tr.album || null, duration: tr.duration || null, kind: tr.kind || 'song'
-      }));
-    }
-    return normalizeLegacyShelfResults(data);
+    return [];
   }
 
-  // ---------- MOTORE DI RICERCA TRAMITE SERVER VERCEL (/api/search) ----------
   async function searchMusic(query) {
     currentQuery = query;
     showLoading();
@@ -271,7 +205,6 @@ document.addEventListener("DOMContentLoaded", () => {
         ? `&type=${encodeURIComponent(currentSearchType)}`
         : '';
       
-      // Chiamata aggiornata correttamente con il prefisso /api/
       const res = await fetch(`${SERVER_URL}/api/search?q=${encodeURIComponent(query)}${typeParam}`);
       if (!res.ok) throw new Error('Errore di connessione al server');
 
@@ -410,18 +343,30 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  function handleTrackTap(i, list){
+  async function handleTrackTap(i, list){
     const tr = list[i];
     if (!tr) return;
 
-    if (tr.kind === 'artist' || tr.kind === 'playlist' || tr.kind === 'album') {
-      if (els.input) els.input.value = tr.title;
-      currentSearchType = 'song';
-      if (els.typeFilter) {
-        els.typeFilter.querySelectorAll('.type-btn').forEach(b => b.classList.toggle('active', b.dataset.type === 'song'));
+    if (tr.kind === 'artist') {
+      openArtistModal(tr.id, tr.title);
+      return;
+    }
+
+    if (tr.kind === 'playlist' || tr.kind === 'album') {
+      showToast(`Caricamento ${tr.title}... 🎶`);
+      try {
+        const res = await fetch(`${SERVER_URL}/api/playlist?id=${encodeURIComponent(tr.id)}`);
+        const data = await res.json();
+        if (data.tracks && data.tracks.length > 0) {
+          currentList = data.tracks;
+          renderResults();
+          showToast(`Playlist caricata! ✨`);
+        } else {
+          showToast(`Nessun brano trovato nella playlist`);
+        }
+      } catch(e) {
+        showToast(`Errore nel caricamento della playlist`);
       }
-      showToast(`Cerco brani di "${tr.title}" 🔍`);
-      searchMusic(tr.title);
       return;
     }
 
@@ -440,7 +385,46 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // ---------- YOUTUBE IFRAME API ----------
+  async function openArtistModal(artistId, artistName) {
+    const modal = document.getElementById('artistModal');
+    const titleEl = document.getElementById('artistModalName');
+    const contentEl = document.getElementById('artistModalContent');
+    
+    if (!modal) return;
+    titleEl.textContent = artistName;
+    contentEl.innerHTML = `<p style="color:#aaa; text-align:center;">Caricamento brani di ${artistName}...</p>`;
+    modal.style.display = 'block';
+
+    try {
+      const res = await fetch(`${SERVER_URL}/api/artist?id=${encodeURIComponent(artistId)}`);
+      const data = await res.json();
+      
+      if (!data.tracks || data.tracks.length === 0) {
+        contentEl.innerHTML = `<p style="color:#aaa; text-align:center;">Nessun brano trovato per questo artista.</p>`;
+        return;
+      }
+
+      contentEl.innerHTML = data.tracks.map((tr, i) => trackRowHtml(tr, i, false)).join('');
+
+      contentEl.querySelectorAll('.track').forEach(row => {
+        row.addEventListener('click', () => {
+          modal.style.display = 'none';
+          handleTrackTap(parseInt(row.dataset.i, 10), data.tracks);
+        });
+      });
+    } catch(e) {
+      contentEl.innerHTML = `<p style="color:#ff5555; text-align:center;">Errore di caricamento.</p>`;
+    }
+  }
+
+  const closeArtistBtn = document.getElementById('closeArtistModal');
+  if (closeArtistBtn) {
+    closeArtistBtn.addEventListener('click', () => {
+      const modal = document.getElementById('artistModal');
+      if (modal) modal.style.display = 'none';
+    });
+  }
+
   window.onYouTubeIframeAPIReady = function(){
     try {
       ytPlayer = new YT.Player('yt-player-host', {
@@ -576,7 +560,6 @@ document.addEventListener("DOMContentLoaded", () => {
   if (els.progressBar) els.progressBar.addEventListener('click', (e) => seekFromBar(els.progressBar, e));
   if (els.fsProgressBar) els.fsProgressBar.addEventListener('click', (e) => seekFromBar(els.fsProgressBar, e));
 
-  // ---------- PLAYER FULLSCREEN ----------
   function updateFullscreenMeta(tr){
     if (els.fsTitle) els.fsTitle.textContent = tr.title;
     if (els.fsArtist) els.fsArtist.textContent = tr.artist;
