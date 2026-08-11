@@ -49,7 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const HISTORY_MAX = 60;
   const DOUBLE_TAP_MS = 350;
 
-  // URL del server Vercel (Innertube reale, endpoint: /search?q=...&type=...)
+  // URL del server Vercel (aggiornato con il prefisso /api/corretto)
   const SERVER_URL = 'https://server-music-alice-music.vercel.app';
 
   const MAGIC_CIRCLE_SVG = `
@@ -171,7 +171,7 @@ document.addEventListener("DOMContentLoaded", () => {
     showToast('Cronologia svuotata 📜');
   });
 
-  // ---------- FILTRO TIPO DI RICERCA (canzoni / artisti / playlist) ----------
+  // ---------- FILTRO TIPO DI RICERCA ----------
   if (els.typeFilter) {
     els.typeFilter.addEventListener('click', (e) => {
       const btn = e.target.closest('.type-btn');
@@ -182,12 +182,6 @@ document.addEventListener("DOMContentLoaded", () => {
       if (q) searchMusic(q);
     });
   }
-
-  // ---------- NORMALIZZAZIONE RISPOSTA SERVER ----------
-  // Il server ora restituisce già dati puliti: { query, type, count, tracks:[{id,title,artist,thumb,album,duration,kind}] }
-  // Manteniamo comunque un fallback "legacy" che sa leggere anche la vecchia
-  // risposta grezza (shelves di youtubei.js) o un semplice array, così l'app
-  // non si rompe se il server non è ancora aggiornato.
 
   function pickThumbLegacy(item){
     const candidates = [
@@ -247,8 +241,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function normalizeSearchResponse(data){
     if (!data) return [];
-
-    // Formato nuovo (server potenziato)
     if (Array.isArray(data.tracks)) {
       return data.tracks.map(tr => ({
         id: tr.id,
@@ -260,20 +252,16 @@ document.addEventListener("DOMContentLoaded", () => {
         kind: tr.kind || 'song'
       }));
     }
-
-    // Array semplice già pronto
     if (Array.isArray(data) && data.length && data[0]?.id !== undefined) {
       return data.map(tr => ({
         id: tr.id, title: tr.title || 'Senza titolo', artist: tr.artist || 'Sconosciuto',
         thumb: tr.thumb || '', album: tr.album || null, duration: tr.duration || null, kind: tr.kind || 'song'
       }));
     }
-
-    // Fallback: risposta grezza vecchio server
     return normalizeLegacyShelfResults(data);
   }
 
-  // ---------- MOTORE DI RICERCA TRAMITE SERVER VERCEL (Innertube reale) ----------
+  // ---------- MOTORE DI RICERCA TRAMITE SERVER VERCEL (/api/search) ----------
   async function searchMusic(query) {
     currentQuery = query;
     showLoading();
@@ -282,13 +270,15 @@ document.addEventListener("DOMContentLoaded", () => {
       const typeParam = currentSearchType && currentSearchType !== 'all'
         ? `&type=${encodeURIComponent(currentSearchType)}`
         : '';
-      const res = await fetch(`${SERVER_URL}/search?q=${encodeURIComponent(query)}${typeParam}`);
+      
+      // Chiamata aggiornata correttamente con il prefisso /api/
+      const res = await fetch(`${SERVER_URL}/api/search?q=${encodeURIComponent(query)}${typeParam}`);
       if (!res.ok) throw new Error('Errore di connessione al server');
 
       const data = await res.json();
       const tracks = normalizeSearchResponse(data);
 
-      if (query !== currentQuery) return; // una ricerca più recente ha già preso il posto di questa
+      if (query !== currentQuery) return;
 
       if (!tracks.length) {
         showEmptyState();
@@ -334,8 +324,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Icona diversa a seconda che il risultato sia riproducibile (canzone/video)
-  // o "di navigazione" (artista/playlist/album, che rilancia una ricerca mirata)
   function trackActionIcon(tr){
     if (tr.kind === 'artist' || tr.kind === 'playlist' || tr.kind === 'album') {
       return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`;
@@ -344,7 +332,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function trackRowHtml(tr, i, isHistory){
-    const durationBadge = tr.duration ? `<span class="hist-time" style="margin-top:0;">${escapeHtml(tr.duration)}</span>` : '';
     const subtitle = isHistory
       ? `<div class="a">${escapeHtml(tr.artist)}</div><div class="hist-time">${timeAgo(tr.playedAt)}</div>`
       : `<div class="a">${escapeHtml(tr.artist)}${tr.album ? ' · ' + escapeHtml(tr.album) : ''}</div>`;
@@ -423,11 +410,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // ---------- GESTIONE TAP / DOPPIO TAP SUI BRANI ----------
-  // Singolo click: riproduce (comportamento di sempre).
-  // Doppio click/tap ravvicinato sullo stesso brano: apre il player fullscreen.
-  // Se il risultato è un artista/playlist/album (non riproducibile come video),
-  // rilancia invece una ricerca mirata sui suoi brani.
   function handleTrackTap(i, list){
     const tr = list[i];
     if (!tr) return;
@@ -612,7 +594,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   if (els.fsClose) els.fsClose.addEventListener('click', closeFullscreenPlayer);
 
-  // Toccare il mini player (fuori dai controlli) apre il fullscreen
   if (els.player) {
     els.player.addEventListener('click', (e) => {
       if (e.target.closest('.controls') || e.target.closest('.progress')) return;
